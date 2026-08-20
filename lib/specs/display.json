@@ -28,6 +28,7 @@
     {
       "id": "paraati",
       "name": "Paraati",
+      "plainName": "Leveä yläbanneri",
       "width": 980,
       "height": 400,
       "maxFileSizeKb": 300,
@@ -43,6 +44,7 @@
     {
       "id": "pystyparaati",
       "name": "Pystyparaati",
+      "plainName": "Korkea sivubanneri",
       "width": 300,
       "height": 600,
       "maxFileSizeKb": 300,
@@ -59,6 +61,7 @@
     {
       "id": "performance-display",
       "name": "Performance Display",
+      "plainName": "Neliömainos",
       "width": 600,
       "height": 600,
       "maxFileSizeKb": 300,
@@ -79,6 +82,7 @@
     {
       "id": "mobiiliparaati",
       "name": "Mobiiliparaati",
+      "plainName": "Mobiilimainos",
       "width": 300,
       "height": 431,
       "maxFileSizeKb": 300,
@@ -94,6 +98,7 @@
     {
       "id": "boksi",
       "name": "Boksi",
+      "plainName": "Artikkelin vierellä",
       "width": 600,
       "height": 500,
       "maxFileSizeKb": 300,
@@ -110,6 +115,7 @@
     {
       "id": "megaparaati",
       "name": "Megaparaati",
+      "plainName": "Suuri yläbanneri",
       "width": 980,
       "height": 552,
       "maxFileSizeKb": 300,
@@ -125,6 +131,7 @@
     {
       "id": "tapetti",
       "name": "Tapetti",
+      "plainName": "Koko sivun taustakuva",
       "width": 1600,
       "height": 1200,
       "maxFileSizeKb": 400,
@@ -143,6 +150,7 @@
       "id": "paraati-html5",
       "baseFormat": "paraati",
       "name": "Paraati HTML5 (animoitu)",
+      "plainName": "Leveä yläbanneri",
       "maxFileSizeKb": 300,
       "maxAnimationSeconds": 15
     },
@@ -150,6 +158,7 @@
       "id": "performance-display-html5",
       "baseFormat": "performance-display",
       "name": "Performance Display HTML5 (animoitu)",
+      "plainName": "Neliömainos",
       "maxFileSizeKb": 300,
       "maxAnimationSeconds": 15
     }

@@ -8,7 +8,13 @@ export interface TextLimits {
 
 export interface DisplayFormat {
   id: string;
+  /** Alman tuotenimi, esim. "Paraati". Tämä on aineiston tunniste
+   *  käyttöliittymässä: asiakas ostaa Almalta juuri tämän tuotteen, ja
+   *  samalla nimellä aineistosta puhutaan Alman kanssa. Ei koskaan korvata. */
   name: string;
+  /** Lyhyt arkikielinen kuvaus siitä, mihin mainos sivulla päätyy. Tukee
+   *  tuotenimeä ensikertalaiselle — ei korvaa sitä. */
+  plainName: string;
   width: number;
   height: number;
   maxFileSizeKb: number;
@@ -24,6 +30,7 @@ export interface Html5Format {
   id: string;
   baseFormat: string;
   name: string;
+  plainName: string;
   maxFileSizeKb: number;
   maxAnimationSeconds: number;
 }
@@ -104,6 +111,8 @@ export interface GeneratedAsset {
   id: string;
   formatId: string;
   formatName: string;
+  /** Formaatin arkikielinen kuvaus, jota näytetään tuotenimen tukena. */
+  formatPlainName: string;
   kind: "static" | "html5";
   width: number;
   height: number;

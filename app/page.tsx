@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { resolveBannerColors } from "@/lib/templates/banner";
 import type {
   BrandCard,
   CopyVariant,
@@ -12,9 +13,47 @@ import type {
 type Phase = "input" | "brand" | "results";
 
 const GOALS: { id: GoalId; name: string; hint: string }[] = [
-  { id: "tunnettuus", name: "Tunnettuus", hint: "Tee itsesi tunnetuksi" },
+  { id: "tunnettuus", name: "Tunnettuus", hint: "Kerro, että olette olemassa" },
   { id: "tarjous", name: "Tarjous", hint: "Nosta etu tai tarjous esiin" },
   { id: "rekrytointi", name: "Rekrytointi", hint: "Houkuttele hakijoita" },
+];
+
+/**
+ * Värien roolit siinä järjestyksessä, jossa ne vaikuttavat valmiiseen
+ * mainokseen. Kuvaukset kertovat mihin väri päätyy — pelkkä "Korostus" ei
+ * kerro ensikertalaiselle, että kyse on painikkeen väristä.
+ * Roolit vastaavat lib/templates/banner.ts:n resolveBannerColors-logiikkaa.
+ */
+const COLOR_ROLES: {
+  key: keyof BrandCard["colors"];
+  label: string;
+  role: string;
+}[] = [
+  {
+    key: "primary",
+    label: "Pääväri",
+    role: "Yrityksen nimi mainoksessa. Myös mainoksen pohja, jos mainos tehdään ilman kuvaa.",
+  },
+  {
+    key: "accent",
+    label: "Painikkeen väri",
+    role: "Mainoksen painike ja kuvan reunaviiva.",
+  },
+  {
+    key: "text",
+    label: "Tekstin väri",
+    role: "Otsikko ja leipäteksti kuvallisessa mainoksessa.",
+  },
+  {
+    key: "background",
+    label: "Pohjaväri",
+    role: "Mainoksen pohja silloin, kun mainoksessa on kuva.",
+  },
+  {
+    key: "secondary",
+    label: "Toinen väri",
+    role: "Varaväri pohjalle, jos pääväri ei sovi pohjaksi. Näkyy harvoin.",
+  },
 ];
 
 export default function Page() {
@@ -47,14 +86,14 @@ export default function Page() {
         body: JSON.stringify({ url }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Analysointi epäonnistui.");
+      if (!res.ok) throw new Error(data.error ?? "Sivun lukeminen ei onnistunut. Tarkista osoite ja yritä uudelleen.");
 
       setBrand(data.brand);
       setAiEnabled(data.meta?.aiEnabled ?? true);
       setWarnings(data.brand?.warnings ?? []);
       setPhase("brand");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Tuntematon virhe.");
+      setError(err instanceof Error ? err.message : "Jotain meni vikaan. Yritä uudelleen.");
     } finally {
       setBusy(null);
     }
@@ -71,7 +110,7 @@ export default function Page() {
         body: JSON.stringify({ brand, goalId: goal }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Generointi epäonnistui.");
+      if (!res.ok) throw new Error(data.error ?? "Mainosten teko ei onnistunut. Yritä uudelleen.");
 
       setAssets(data.assets);
       setVariants(data.copyVariants);
@@ -80,7 +119,7 @@ export default function Page() {
       setWarnings(data.warnings ?? []);
       setPhase("results");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Tuntematon virhe.");
+      setError(err instanceof Error ? err.message : "Jotain meni vikaan. Yritä uudelleen.");
     } finally {
       setBusy(null);
     }
@@ -100,14 +139,14 @@ export default function Page() {
         body: JSON.stringify({ brand, goalId: goal, copyVariants: next }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Päivitys epäonnistui.");
+      if (!res.ok) throw new Error(data.error ?? "Mainosten päivitys ei onnistunut. Yritä uudelleen.");
 
       setAssets(data.assets);
       setVariants(data.copyVariants);
       setLimits(data.limits ?? null);
       setWarnings(data.warnings ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Tuntematon virhe.");
+      setError(err instanceof Error ? err.message : "Jotain meni vikaan. Yritä uudelleen.");
     } finally {
       setBusy(null);
     }
@@ -131,16 +170,16 @@ export default function Page() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Zip-paketin luonti epäonnistui.");
+        throw new Error(data.error ?? "Latauspaketin kokoaminen ei onnistunut. Yritä uudelleen.");
       }
       const blob = await res.blob();
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = "amr-aineistot.zip";
+      link.download = "mainokset.zip";
       link.click();
       URL.revokeObjectURL(link.href);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Lataus epäonnistui.");
+      setError(err instanceof Error ? err.message : "Lataus ei onnistunut. Yritä uudelleen.");
     } finally {
       setBusy(null);
     }
@@ -181,28 +220,28 @@ export default function Page() {
         <div>
           <h1>Aineistostudio</h1>
           <p>
-            Syötä verkkosivusi osoite ja saat valmiit, spec-yhteensopivat
-            mainosaineistot Alman medioihin.
+            Anna verkkosivusi osoite. Teemme siitä valmiit mainokset, jotka
+            täyttävät Alman vaatimukset — et tarvitse mainostoimistoa etkä
+            kuvankäsittelytaitoja.
           </p>
         </div>
       </header>
 
       <div className="steps">
-        <span className={`step ${stepClass(phase, "input")}`}>1 · Syöttö</span>
+        <span className={`step ${stepClass(phase, "input")}`}>1 · Osoite</span>
         <span className={`step ${stepClass(phase, "brand")}`}>
-          2 · Brändikortti
+          2 · Tarkista tiedot
         </span>
         <span className={`step ${stepClass(phase, "results")}`}>
-          3 · Aineistot
+          3 · Mainokset
         </span>
       </div>
 
       {!aiEnabled && (
         <div className="notice warn">
-          <strong>Tekoälyanalyysi ei ole käytössä.</strong> Aineistot syntyvät
-          silti: brändi luetaan suoraan sivun rakenteesta ja tekstit tulevat
-          valmiista pohjista. Tulos on karkeampi, ja kaikki kentät ovat
-          muokattavissa.
+          <strong>Tekoäly ei ole nyt käytössä.</strong> Mainokset syntyvät
+          silti: värit ja kuvat luetaan suoraan sivultasi ja tekstit tulevat
+          valmiista pohjista. Tulos on karkeampi, ja voit muokata kaiken itse.
           <span className="devhint">
             Kehittäjälle: lisää <code>ANTHROPIC_API_KEY</code> tiedostoon{" "}
             <code>.env.local</code> ja käynnistä palvelin uudelleen.
@@ -224,8 +263,9 @@ export default function Page() {
             <span className="eyebrow">Vaihe 1</span>
             <h2>Verkkosivun osoite</h2>
             <p className="sub">
-              Poimimme sivulta logon, värit, fontit ja kuvat. Voit muokata
-              kaikkea ennen aineistojen tekoa.
+              Luemme sivultasi logon, värit ja kuvat. Näytämme ne sinulle
+              seuraavassa vaiheessa, ja voit korjata mitä tahansa ennen kuin
+              mainokset tehdään.
             </p>
 
             <div className="field">
@@ -242,7 +282,7 @@ export default function Page() {
             </div>
 
             <div className="field">
-              <label>Kampanjatavoite</label>
+              <label>Mitä haluat mainoksella saada aikaan?</label>
               <div className="goals">
                 {GOALS.map((g) => (
                   <button
@@ -262,10 +302,10 @@ export default function Page() {
             <div className="actions">
               <button type="submit" disabled={busy !== null || !url.trim()}>
                 {busy === "extract"
-                  ? "Analysoidaan sivua…"
+                  ? "Luetaan sivua…"
                   : brand
-                  ? "Analysoi uudelleen"
-                  : "Analysoi sivu"}
+                  ? "Lue sivu uudelleen"
+                  : "Lue tiedot sivultani"}
               </button>
               {/* Aiempi analyysi on tallessa: takaisin tullut käyttäjä ei
                   joudu odottamaan uutta ajoa päästäkseen eteenpäin. */}
@@ -276,7 +316,7 @@ export default function Page() {
                   onClick={() => back("brand")}
                   disabled={busy !== null}
                 >
-                  Jatka brändikorttiin
+                  Jatka tietojen tarkistukseen
                 </button>
               )}
             </div>
@@ -306,20 +346,23 @@ export default function Page() {
             <div className="card-body">
               <span className="eyebrow">Vaihe 3</span>
               <h2>
-                Aineistot valmiina{" "}
+                Mainoksesi ovat valmiit{" "}
                 <span className={`badge ${allPass ? "ok" : "attention"}`}>
-                  {allPass
-                    ? "Kaikki läpäisivät validoinnin"
-                    : "Osa vaatii huomiota"}
+                  {allPass ? "Kaikki valmiita lähetettäväksi" : "Osa vaatii huomiota"}
                 </span>
               </h2>
               <p className="sub">
-                {brand.companyName} · {assets.length} aineistoa ·{" "}
-                {variants.length} tekstivariaatiota
+                {brand.companyName} · {assets.length} mainosta ·{" "}
+                {variants.length} tekstiehdotusta. Jokainen mainos on tehty
+                Alman vaatimaan kokoon, ja tarkistimme ne puolestasi.
               </p>
 
               <div className="field">
-                <label>Tekstivariaatio</label>
+                <label>Valitse tekstiehdotus</label>
+                <p className="muted hint">
+                  Kirjoitimme kolme erilaista ehdotusta. Valitse se, joka kuulostaa
+                  eniten sinun yritykseltäsi — voit myös muokata sitä alla.
+                </p>
                 <div className="goals">
                   {variants.map((v, i) => (
                     <button
@@ -331,7 +374,7 @@ export default function Page() {
                       onClick={() => setActiveVariant(v.id)}
                       aria-pressed={activeVariant === v.id}
                     >
-                      Variaatio {i + 1}
+                      Ehdotus {i + 1}
                       <small>{v.headline}</small>
                     </button>
                   ))}
@@ -346,7 +389,7 @@ export default function Page() {
               />
 
               <div className="field zipchoice">
-                <label>Zip-paketin sisältö</label>
+                <label>Mitkä mainokset ladataan?</label>
                 <div className="goals">
                   <button
                     type="button"
@@ -354,10 +397,10 @@ export default function Page() {
                     onClick={() => setZipAll(false)}
                     aria-pressed={!zipAll}
                   >
-                    Vain valittu variaatio
+                    Vain valitsemani teksti
                     <small>
-                      {shown.length} aineistoa — vastaanottaja tietää mikä on
-                      oikea versio
+                      {shown.length} mainosta. Suositus: vastaanottaja näkee
+                      heti, mikä on oikea versio.
                     </small>
                   </button>
                   <button
@@ -366,8 +409,11 @@ export default function Page() {
                     onClick={() => setZipAll(true)}
                     aria-pressed={zipAll}
                   >
-                    Kaikki variaatiot
-                    <small>{assets.length} aineistoa — A/B-testaukseen</small>
+                    Kaikki kolme tekstiä
+                    <small>
+                      {assets.length} mainosta, jos haluat vertailla mikä
+                      teksti toimii parhaiten.
+                    </small>
                   </button>
                 </div>
               </div>
@@ -375,21 +421,21 @@ export default function Page() {
               <div className="actions">
                 <button onClick={handleZip} disabled={busy !== null}>
                   {busy === "zip" && <span className="spinner" />}
-                  Lataa zip-pakettina
+                  Lataa mainokset koneelleni
                 </button>
                 <button
                   className="outline"
                   onClick={handleGenerate}
                   disabled={busy !== null}
                 >
-                  Generoi uudet tekstit
+                  Kirjoita tekstit uudelleen
                 </button>
                 <button
                   className="ghost"
                   onClick={() => back("brand")}
                   disabled={busy !== null}
                 >
-                  Muokkaa brändikorttia
+                  Muokkaa yrityksen tietoja
                 </button>
                 <button
                   className="ghost"
@@ -417,11 +463,11 @@ export default function Page() {
             <div className="card-bar green" />
             <div className="card-body">
               <span className="eyebrow">Seuraava askel</span>
-              <h2>Aineistot valmiit — entä sitten?</h2>
+              <h2>Mainokset ovat valmiit — mitä nyt?</h2>
               <p className="sub">
-                Aineistot täyttävät Alman tekniset vaatimukset ja ovat valmiita
-                kampanjaan. Seuraavaksi ne toimitetaan Almalle ja varataan
-                näkyvyys.
+                Mainoksesi täyttävät Alman vaatimukset ja ovat valmiita
+                julkaistavaksi. Seuraavaksi ne lähetetään Almalle ja sovitaan,
+                missä ja milloin ne näkyvät.
               </p>
 
               <div className="actions">
@@ -524,7 +570,7 @@ function BrandEditor({
       });
       onChange({ ...brand, logoUrl: uri });
     } catch (e) {
-      setUploadError(e instanceof Error ? e.message : "Lataus epäonnistui.");
+      setUploadError(e instanceof Error ? e.message : "Lataus ei onnistunut. Yritä uudelleen.");
     }
   }
 
@@ -547,19 +593,20 @@ function BrandEditor({
       // nimenomaan sen käyttöön, joten siitä tulee suoraan pääkuva.
       onChange({ ...brand, images: [...added, ...brand.images] });
     } catch (e) {
-      setUploadError(e instanceof Error ? e.message : "Lataus epäonnistui.");
+      setUploadError(e instanceof Error ? e.message : "Lataus ei onnistunut. Yritä uudelleen.");
     }
   }
 
   return (
-    <div className="card">
+    <div className="card sticky-host">
       <div className="card-bar" />
       <div className="card-body">
         <span className="eyebrow">Vaihe 2</span>
-        <h2>Brändikortti</h2>
+        <h2>Tarkista yrityksesi tiedot</h2>
         <p className="sub">
-          Tarkista ja korjaa ennen aineistojen tekoa. Ensimmäistä valittuna
-          olevaa kuvaa käytetään aineistoissa.
+          Nämä tiedot luimme sivultasi. Korjaa mitä tahansa, mikä on väärin —
+          mainokset tehdään näillä tiedoilla. Kun tiedot näyttävät oikeilta,
+          paina alhaalla &rdquo;Tee mainokset&rdquo;.
         </p>
 
         <div className="brand-grid">
@@ -620,13 +667,17 @@ function BrandEditor({
 
           <div className="field field-row">
             <div style={{ flex: 1 }}>
-              <label htmlFor="tone">Äänensävy</label>
+              <label htmlFor="tone">Miten puhut asiakkaille</label>
               <input
                 id="tone"
                 type="text"
                 value={brand.tone}
                 onChange={(e) => set("tone", e.target.value)}
               />
+              <p className="muted hint">
+                Ohjaa mainostekstien sävyä, esim. &rdquo;Rento ja
+                mutkaton&rdquo;.
+              </p>
             </div>
             <div style={{ flex: 1 }}>
               <label htmlFor="ala">Toimiala</label>
@@ -636,43 +687,44 @@ function BrandEditor({
                 value={brand.toimiala}
                 onChange={(e) => set("toimiala", e.target.value)}
               />
+              <p className="muted hint">Esim. &rdquo;Ravintola&rdquo;.</p>
             </div>
           </div>
         </div>
       </div>
 
       <div className="field" style={{ marginTop: 20 }}>
-        <label>Väripaletti</label>
-        <div className="swatches">
-          {(
-            [
-              ["primary", "Pääväri"],
-              ["accent", "Korostus"],
-              ["secondary", "Toissijainen"],
-              ["background", "Tausta"],
-              ["text", "Teksti"],
-            ] as const
-          ).map(([key, label]) => (
-            <div className="swatch" key={key}>
+        <label>Yrityksesi värit</label>
+        <p className="muted hint">
+          Poimimme nämä sivultasi. Jokainen väri tekee mainoksessa eri asian —
+          napauta väriruutua vaihtaaksesi sen. Esikatselu päivittyy heti.
+        </p>
+
+        <div className="colorroles">
+          {COLOR_ROLES.map(({ key, label, role }) => (
+            <div className="colorrole" key={key}>
               <input
                 type="color"
                 value={brand.colors[key]}
                 onChange={(e) => setColor(key, e.target.value)}
                 aria-label={label}
               />
-              <span>
-                {label}
-                <br />
-                {brand.colors[key]}
-              </span>
+              <div className="colorrole-text">
+                <strong>
+                  {label} <code>{brand.colors[key]}</code>
+                </strong>
+                <span>{role}</span>
+              </div>
             </div>
           ))}
         </div>
+
+        <ColorPreview brand={brand} />
       </div>
 
       <div className="field field-row">
         <div style={{ flex: 1 }}>
-          <label htmlFor="fh">Otsikkofontti</label>
+          <label htmlFor="fh">Otsikoiden kirjasin</label>
           <input
             id="fh"
             type="text"
@@ -686,7 +738,7 @@ function BrandEditor({
           />
         </div>
         <div style={{ flex: 1 }}>
-          <label htmlFor="fb">Leipätekstin fontti</label>
+          <label htmlFor="fb">Leipätekstin kirjasin</label>
           <input
             id="fb"
             type="text"
@@ -703,9 +755,14 @@ function BrandEditor({
 
       <div className="field">
         <label>
-          Kuvat ({enabledCount} valittuna
-          {enabledCount === 0 ? " — aineistot tehdään ilman kuvaa" : ""})
+          Kuvat ({enabledCount} käytössä
+          {enabledCount === 0 ? " — mainokset tehdään ilman kuvaa" : ""})
         </label>
+        <p className="muted hint">
+          Mainoksissa käytetään pääkuvaa. Voit vaihtaa sen tai ladata omia
+          kuvia — oma valokuva toimii mainoksessa usein paremmin kuin sivulta
+          poimittu.
+        </p>
 
         {uploadError && (
           <div className="notice err" style={{ marginBottom: 12 }}>
@@ -769,14 +826,15 @@ function BrandEditor({
 
         {brand.images.length === 0 && (
           <p className="muted" style={{ marginTop: "var(--space-2)" }}>
-            Sivulta ei löytynyt käyttökelpoisia kuvia. Lataa oma kuva tai anna
-            aineistojen rakentua väreillä ja typografialla.
+            Sivultasi ei löytynyt kuvia, jotka sopisivat mainokseen. Lataa oma
+            kuva yltä, tai jatka ilman kuvaa — teemme mainokset silloin
+            yrityksesi väreillä.
           </p>
         )}
       </div>
 
       <div className="field">
-        <label>Kampanjatavoite</label>
+        <label>Mitä haluat mainoksella saada aikaan?</label>
         <div className="goals">
           {GOALS.map((g) => (
             <button
@@ -793,21 +851,92 @@ function BrandEditor({
         </div>
       </div>
 
-        <div className="actions">
-          <button onClick={onGenerate} disabled={busy}>
-            {busy ? "Luodaan aineistoja…" : "Luo aineistot"}
-          </button>
-          {hasResults && (
-            <button className="outline" onClick={onForward} disabled={busy}>
-              Palaa aineistoihin
-            </button>
-          )}
+        {busy && <ProgressNote steps={GENERATE_STEPS} />}
+      </div>
+
+      {/* Kiinnitetty toimintopalkki: brändikortti on yli kaksi ruudunkorkeutta
+          pitkä, ja aiemmin "Luo aineistot" oli kokonaan näkymän ulkopuolella.
+          Ensikertalainen ei voi tietää, että sivua pitää vierittää — palkki
+          pitää etenemisen aina näkyvissä. */}
+      <div className="stickybar">
+        <span className="stickybar-note">
+          Tiedot näyttävät oikeilta? Mainokset syntyvät noin minuutissa.
+        </span>
+        <div className="stickybar-actions">
           <button className="ghost" onClick={onBack} disabled={busy}>
             Takaisin
           </button>
+          {hasResults && (
+            <button className="outline" onClick={onForward} disabled={busy}>
+              Palaa mainoksiin
+            </button>
+          )}
+          <button onClick={onGenerate} disabled={busy}>
+            {busy && <span className="spinner" />}
+            {busy ? "Tehdään mainoksia…" : "Tee mainokset"}
+          </button>
         </div>
-        {busy && <ProgressNote steps={GENERATE_STEPS} />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Näyttää, miltä valitut värit näyttävät valmiissa mainoksessa. Käyttää samaa
+ * resolveBannerColors-funktiota kuin varsinainen renderöinti, joten esikatselu
+ * kertoo värien todellisen lopputuloksen — myös silloin kun logiikka korvaa
+ * huonosti toimivan värin toisella. Pelkät väriruudut eivät kerro tätä:
+ * käyttäjä ei voi tietää, että vaalea pääväri ei kelpaa pohjaksi.
+ */
+function ColorPreview({ brand }: { brand: BrandCard }) {
+  const hasImage = brand.images.some((i) => i.enabled);
+  const withImage = resolveBannerColors(brand, true);
+  const noImage = resolveBannerColors(brand, false);
+
+  const cards: { title: string; note: string; c: typeof withImage }[] = [
+    {
+      title: "Mainos kuvan kanssa",
+      note: hasImage
+        ? "Näin mainoksesi tehdään nyt."
+        : "Käytetään, jos otat kuvan käyttöön.",
+      c: withImage,
+    },
+    {
+      title: "Mainos ilman kuvaa",
+      note: hasImage
+        ? "Käytetään, jos kuva ei mahdu johonkin kokoon."
+        : "Näin mainoksesi tehdään nyt.",
+      c: noImage,
+    },
+  ];
+
+  return (
+    <div className="cpreview">
+      {cards.map(({ title, note, c }) => (
+        <div className="cpreview-item" key={title}>
+          <div className="cpreview-head">
+            <strong>{title}</strong>
+            <span>{note}</span>
+          </div>
+          <div className="cpreview-ad" style={{ background: c.ground }}>
+            <span
+              className="cpreview-name"
+              style={{ color: c.mode === "light" ? c.text : c.text }}
+            >
+              {brand.companyName || "Yrityksesi"}
+            </span>
+            <span className="cpreview-headline" style={{ color: c.text }}>
+              Otsikko tulee tähän
+            </span>
+            <span
+              className="cpreview-cta"
+              style={{ background: c.ctaBg, color: c.ctaText }}
+            >
+              Painike
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -827,7 +956,7 @@ async function readAsDataUri(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("Tiedoston luku epäonnistui."));
+    reader.onerror = () => reject(new Error("Tiedostoa ei voitu lukea. Kokeile toista kuvaa."));
     reader.readAsDataURL(file);
   });
 }
@@ -885,17 +1014,17 @@ async function fileToDataUri(
  *  mitattu tyypillisistä ajoista. Ne kertovat mitä on menossa — eivät väitä
  *  tietävänsä prosentteja, joita palvelin ei raportoi. */
 const EXTRACT_STEPS = [
-  { at: 0, text: "Haetaan verkkosivua…" },
-  { at: 2500, text: "Luetaan värit, fontit ja logo…" },
-  { at: 5000, text: "Katsotaan kuvat läpi…" },
-  { at: 9000, text: "Kootaan brändikorttia…" },
+  { at: 0, text: "Avataan verkkosivuasi…" },
+  { at: 2500, text: "Etsitään logo ja yrityksesi värit…" },
+  { at: 5000, text: "Katsotaan, mitkä kuvat sopivat mainokseen…" },
+  { at: 9000, text: "Kootaan tiedot yhteen…" },
 ];
 
 const GENERATE_STEPS = [
   { at: 0, text: "Kirjoitetaan mainostekstejä…" },
-  { at: 5000, text: "Sovitetaan kuvat kokoihin…" },
-  { at: 9000, text: "Renderöidään aineistoja…" },
-  { at: 14000, text: "Tarkistetaan speksit ja kontrastit…" },
+  { at: 5000, text: "Sovitetaan kuvat jokaiseen kokoon…" },
+  { at: 9000, text: "Piirretään mainoksia…" },
+  { at: 14000, text: "Tarkistetaan Alman vaatimukset…" },
 ];
 
 function ProgressNote({
@@ -966,10 +1095,11 @@ function CopyEditor({
 
   return (
     <div className="field copy-editor">
-      <label>Tarkista tekstit</label>
+      <label>Tarkista ja muokkaa tekstit</label>
       <p className="muted" style={{ marginTop: -2, marginBottom: 12 }}>
-        Lue tekstit läpi ennen latausta. Merkkiraja on tiukimman koon mukaan,
-        jotta sama teksti mahtuu jokaiseen aineistoon.
+        Lue tekstit läpi ennen latausta — voit muokata niitä vapaasti. Luku
+        kentän oikealla puolella kertoo, montako kirjainta teksti saa olla,
+        jotta se mahtuu myös pienimpään mainokseen.
       </p>
 
       <div className="copy-field">
@@ -997,7 +1127,7 @@ function CopyEditor({
 
       <div className="copy-field">
         <div className="copy-label">
-          <span>CTA</span>
+          <span>Painikkeen teksti</span>
           {counter(current.cta, limits?.cta)}
         </div>
         <input
@@ -1005,6 +1135,10 @@ function CopyEditor({
           value={current.cta}
           onChange={(e) => set("cta", e.target.value)}
         />
+        <p className="muted hint">
+          Lyhyt kehotus mainoksen painikkeessa, esim. &rdquo;Varaa aika&rdquo;
+          tai &rdquo;Tutustu valikoimaan&rdquo;.
+        </p>
       </div>
 
       <button
@@ -1014,7 +1148,7 @@ function CopyEditor({
         onClick={() => onSave(current)}
       >
         {busy && <span className="spinner" />}
-        {busy ? "Päivitetään…" : "Päivitä aineistot"}
+        {busy ? "Päivitetään…" : "Päivitä mainokset näillä teksteillä"}
       </button>
     </div>
   );
@@ -1029,6 +1163,10 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
   // Animaatio ajetaan kerran latauksessa ja on ohi noin sekunnissa. Iframen
   // uudelleenluonti avaimen vaihdolla on ainoa tapa nähdä se uudestaan.
   const [replay, setReplay] = useState(0);
+  const [showChecks, setShowChecks] = useState(false);
+
+  const failed = asset.validation.checks.filter((c) => !c.pass);
+  const passed = asset.validation.checks.filter((c) => c.pass);
 
   return (
     <div className="asset">
@@ -1074,30 +1212,64 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
       </div>
 
       <div className="meta">
+        {/* Otsikkona Alman tuotenimi — se on tuote, jonka asiakas Almalta
+            ostaa, ja sillä nimellä aineistosta puhutaan Alman kanssa.
+            Arkikielinen kuvaus kertoo alle, mihin mainos sivulla päätyy. */}
         <h3>
           {asset.formatName}{" "}
           <span
             className={`badge ${asset.validation.pass ? "ok" : "attention"}`}
           >
-            {asset.validation.pass ? "Hyväksytty" : "Huomioitavaa"}
+            {asset.validation.pass ? "Valmis" : "Vaatii huomiota"}
           </span>
         </h3>
         <div className="dim">
-          {asset.width}×{asset.height} px ·{" "}
+          {asset.formatPlainName} · {asset.width}×{asset.height} px ·{" "}
           {Math.round(asset.fileSizeBytes / 1024)} kt ·{" "}
           {asset.kind === "html5" ? "HTML5" : "staattinen"}
         </div>
 
-        <ul className="checks">
-          {asset.validation.checks.map((c) => (
-            <li key={c.id} className={c.pass ? "pass" : "fail"}>
-              <span>
-                {c.label}
-                {c.detail ? ` — ${c.detail}` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {/* Läpimenneet tarkistukset ovat teknistä kieltä ("Ei jQueryä"),
+            joka hämmentää enemmän kuin rauhoittaa — merkki yllä kertoo jo
+            olennaisen. Epäonnistuneet näytetään aina: niihin käyttäjän on
+            tarkoitus reagoida. */}
+        {failed.length > 0 && (
+          <ul className="checks">
+            {failed.map((c) => (
+              <li key={c.id} className="fail">
+                <span>
+                  {c.label}
+                  {c.detail ? ` — ${c.detail}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <button
+          type="button"
+          className="details-toggle"
+          onClick={() => setShowChecks((v) => !v)}
+          aria-expanded={showChecks}
+        >
+          {showChecks ? "▾" : "▸"}{" "}
+          {failed.length
+            ? "Näytä kaikki tarkistukset"
+            : `Näytä tekniset tarkistukset (${passed.length})`}
+        </button>
+
+        {showChecks && (
+          <ul className="checks">
+            {asset.validation.checks.map((c) => (
+              <li key={c.id} className={c.pass ? "pass" : "fail"}>
+                <span>
+                  {c.label}
+                  {c.detail ? ` — ${c.detail}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="asset-actions">
           <a
@@ -1111,7 +1283,7 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
             download={asset.fileName}
           >
             <button type="button" className="outline tiny">
-              Lataa tämä
+              Lataa vain tämä
             </button>
           </a>
 
@@ -1121,7 +1293,7 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
               className="ghost tiny"
               onClick={() => setReplay((n) => n + 1)}
             >
-              ↻ Toista animaatio
+              ↻ Katso liike uudelleen
             </button>
           )}
         </div>

@@ -141,18 +141,38 @@ export async function compressImage(
 }
 
 /**
- * Mittaa logon keskimääräisen vaaleuden läpinäkymättömistä pikseleistä.
+ * Osuus logon näkyvistä pikseleistä, jotka erottuvat annetusta pohjasta.
+ *
  * Sivustoilla on usein negaversio logosta (alma-logo-white.png), joka latautuu
  * moitteettomasti mutta katoaa vaalealle pohjalle. Pelkkä latauksen
  * onnistuminen ei siis riitä tarkistukseksi — pitää katsoa itse pikselit.
+ *
+ * Keskiluminanssi oli tähän väärä mittari. Moni logo on piirretty valkoisen
+ * levyn päälle: kotipizza.fi:n SVG alkaa koko kuvan peittävällä
+ * fill="#fff" -muodolla, joten keskiarvo on lähes valkoinen ja logo hylättiin,
+ * vaikka sen tummanvihreä teksti näkyy vaalealla pohjalla moitteettomasti.
+ * Oikea kysymys on "erottuuko logosta riittävä osa", ei "onko logo
+ * keskimäärin eri väriä kuin pohja".
+ *
  * Palauttaa null, jos kuvaa ei voi analysoida.
  */
-export async function measureLuminance(
-  dataUri: string
+export async function measureLogoVisibility(
+  dataUri: string,
+  groundHex: string
 ): Promise<number | null> {
   const browser = await getBrowser();
   const context = await browser.newContext({ viewport: { width: 64, height: 64 } });
   const page = await context.newPage();
+
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const s = (groundHex || "#ffffff").replace("#", "");
+  const groundLum =
+    0.2126 * lin(parseInt(s.slice(0, 2), 16)) +
+    0.7152 * lin(parseInt(s.slice(2, 4), 16)) +
+    0.0722 * lin(parseInt(s.slice(4, 6), 16));
 
   try {
     await page.setContent("<!doctype html><meta charset='utf-8'>", {
@@ -160,42 +180,52 @@ export async function measureLuminance(
       timeout: 10000,
     });
 
-    return await page.evaluate(async (uri: string) => {
-      const img = new Image();
-      img.src = uri;
-      try {
-        await img.decode();
-      } catch {
-        return null;
-      }
-      const w = Math.min(img.naturalWidth || 64, 64);
-      const h = Math.min(img.naturalHeight || 64, 64);
-      if (!w || !h) return null;
+    return await page.evaluate(
+      async ({ uri, bgLum, minContrast }) => {
+        const img = new Image();
+        img.src = uri;
+        try {
+          await img.decode();
+        } catch {
+          return null;
+        }
+        // Isompi näyte kuin logon näkyvä koko: ohut teksti valkoisen levyn
+        // päällä katoaa, jos kuva kutistetaan liian pieneksi ennen mittausta.
+        const w = Math.min(img.naturalWidth || 128, 128);
+        const h = Math.min(img.naturalHeight || 128, 128);
+        if (!w || !h) return null;
 
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
-      ctx.drawImage(img, 0, 0, w, h);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+        ctx.drawImage(img, 0, 0, w, h);
 
-      const { data } = ctx.getImageData(0, 0, w, h);
-      let sum = 0;
-      let weight = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        const alpha = data[i + 3] / 255;
-        if (alpha < 0.15) continue; // läpinäkyvä tausta ei kerro logon väristä
+        const { data } = ctx.getImageData(0, 0, w, h);
         const lin = (c: number) => {
-          const s = c / 255;
-          return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+          const t = c / 255;
+          return t <= 0.03928 ? t / 12.92 : Math.pow((t + 0.055) / 1.055, 2.4);
         };
-        const l =
-          0.2126 * lin(data[i]) + 0.7152 * lin(data[i + 1]) + 0.0722 * lin(data[i + 2]);
-        sum += l * alpha;
-        weight += alpha;
-      }
-      return weight > 0 ? sum / weight : null;
-    }, dataUri);
+
+        let visible = 0;
+        let opaque = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const alpha = data[i + 3] / 255;
+          if (alpha < 0.15) continue; // läpinäkyvä tausta ei kerro logon väristä
+          opaque++;
+          const l =
+            0.2126 * lin(data[i]) +
+            0.7152 * lin(data[i + 1]) +
+            0.0722 * lin(data[i + 2]);
+          const hi = Math.max(l, bgLum);
+          const lo = Math.min(l, bgLum);
+          if ((hi + 0.05) / (lo + 0.05) >= minContrast) visible++;
+        }
+        return opaque > 0 ? visible / opaque : null;
+      },
+      { uri: dataUri, bgLum: groundLum, minContrast: 1.6 }
+    );
   } catch {
     return null;
   } finally {

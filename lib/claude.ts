@@ -137,7 +137,16 @@ Ohjeet:
 - tone: äänensävy 2–4 sanalla, esim. "Lämmin ja asiantunteva".
 - toimiala: yksi tai kaksi sanaa, esim. "Parturi-kampaamo".
 - logoUrl: valitse ehdokkaista todennäköisin logo, tai null jos yksikään ei vakuuta. Suosi kuvaa, jonka polussa tai altissa lukee logo, ennen faviconia. Mainos rakentuu vaalealle pohjalle, joten vältä negaversioita: jos tiedostonimessä on white, valko, nega, invert tai light, valitse jokin muu ehdokas silloin kun sellainen on tarjolla.
-- colors: valitse väriehdokkaista aidot brändivärit. primary on tunnistettavin brändiväri. background on vaalea tai tumma pohja, jolle mainos rakentuu. text erottuu backgroundista selvästi (kontrasti vähintään 4.5:1). accent käytetään CTA-napissa, ja sen on erotuttava backgroundista. Jos ehdokkaista ei löydy järkevää väriä, valitse toimialaan sopiva neutraali väri.
+- colors: valitse VAIN annetuista väriehdokkaista. Älä keksi uusia hex-arvoja: ehdokaslista on poimittu sivun omista tyyleistä, ja listan ulkopuolinen väri ei ole yrityksen väri, vaikka se tuntuisi sopivalta.
+  Tunnistettavin brändiväri on lähes aina kylläinen ja keskisävyinen. Valkoinen, musta ja harmaat eivät ole brändivärejä, vaikka ne esiintyisivät sivulla ylivoimaisesti useimmin — ne ovat pohja ja teksti.
+  Vaalea pastelli tai lähes valkoinen sävy ei ole brändiväri silloin kun listalla on kylläisempiä vaihtoehtoja.
+  Jos listan kylläiset värit ovat saman sävyn eri kirkkauksia (esim. useita vihreitä), se sävy ON yrityksen brändiväri. Valitse siitä keskisävyinen versio primaryksi ja selvästi tummempi accentiksi.
+  Roolit kertovat, mihin väri päätyy valmiissa mainoksessa:
+  - primary: tunnistettavin brändiväri. Näkyy yrityksen nimen värinä, ja pohjavärinä silloin kun mainos tehdään ilman kuvaa.
+  - accent: painikkeen väri. Sen on erotuttava pohjasta ja kannettava luettavaa tekstiä.
+  - secondary: toinen brändiväri. Käytetään pohjan varavärinä.
+  - background: vaalea pohja, jolle kuvallinen mainos rakentuu. Yleensä valkoinen tai lähes valkoinen.
+  - text: otsikon ja leipätekstin väri. Kontrasti backgroundia vasten vähintään 4.5:1.
 - fonts: valitse fonttiehdokkaista. Jos ei löydy, ehdota toimialaan sopivat.
 - imageUrls: valitse 2–4 mainoskäyttöön sopivaa kuvaa. Kuvat on liitetty mukaan, joten katso ne. Palauta URLit täsmälleen sellaisina kuin ne annettiin, ja käytä numerointia kuvien tunnistamiseen.
 
@@ -186,10 +195,7 @@ ${
 </kuva-ehdokkaat>
 
 <vari-ehdokkaat esiintymismaaran-mukaan>
-${
-  s.colorCandidates.map((c) => `${c.color} (${c.count})`).join(", ") ||
-  "(ei löytynyt)"
-}
+${describeCandidates(s.colorCandidates) || "(ei löytynyt)"}
 </vari-ehdokkaat>
 
 <fontti-ehdokkaat>
@@ -287,21 +293,153 @@ function fallbackName(s: ScrapeResult): string {
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
+/**
+ * Suurin etäisyys, jolla mallin palauttama väri katsotaan samaksi kuin
+ * sivulta löytynyt ehdokas. Ilman kiinnitystä pelkkä hex-syntaksin tarkistus
+ * päästää läpi minkä tahansa värin: kotipizza.fi tuotti korostusväriksi
+ * laivastonsinisen #001e54:n, jota ei ollut ehdokaslistalla lainkaan.
+ */
+const SNAP_MAX_DISTANCE = 42;
+
+/** Euklidinen etäisyys RGB-avaruudessa. Vastaa kysymykseen "onko tämä sama
+ *  väri kuin jokin ehdokas" — ei yritä mallintaa havaintoa tarkemmin. */
+function colorDistance(a: string, b: string): number {
+  const [r1, g1, b1] = rgb(a);
+  const [r2, g2, b2] = rgb(b);
+  return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
+}
+
+/** Lähin ehdokas, tai null jos yksikään ei ole riittävän lähellä. */
+function snapToCandidates(hex: string, cands: string[]): string | null {
+  let best: string | null = null;
+  let bestDist = Infinity;
+  for (const c of cands) {
+    const d = colorDistance(hex, c);
+    if (d < bestDist) {
+      bestDist = d;
+      best = c;
+    }
+  }
+  return best !== null && bestDist <= SNAP_MAX_DISTANCE ? best : null;
+}
+
+/**
+ * Kuinka hyvin väri kelpaa tunnistettavaksi brändiväriksi. Kylläisyys painaa
+ * eniten, keskisävyisyys tuo bonuksen, ja yleisyys sivulla ratkaisee tasapelit.
+ * Sama funktio ohjaa sekä heuristista palettia että mallin valinnan
+ * järkevyystarkistusta, jotta molemmat päätyvät samaan käsitykseen siitä,
+ * mikä sivun väreistä on brändiväri.
+ */
+function brandScore(hex: string, rankIndex: number): number {
+  const l = lum(hex);
+  return sat(hex) * 2 + (l > 0.06 && l < 0.72 ? 0.8 : 0) - rankIndex * 0.02;
+}
+
+/** Mallin pääväri hyväksytään, jos se saavuttaa tämän osuuden parhaasta
+ *  ehdokkaasta. Selvästi alle jäävä valinta on poimintavirhe. */
+const PRIMARY_SCORE_FLOOR = 0.6;
+
+function contrast(a: string, b: string): number {
+  const la = lum(a);
+  const lb = lum(b);
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** Luettavin tekstiväri annetun värin päälle. */
+function readableOnColor(bg: string): string {
+  return contrast("#ffffff", bg) >= contrast("#141821", bg)
+    ? "#ffffff"
+    : "#141821";
+}
+
 function sanitizeColors(
   c: Partial<BrandCard["colors"]> | undefined,
   s: ScrapeResult
 ): BrandCard["colors"] {
   const guess = guessPalette(s);
-  const pick = (v: unknown, fb: string) =>
-    typeof v === "string" && HEX.test(v.trim()) ? v.trim().toLowerCase() : fb;
+  const cands = s.colorCandidates
+    .map((x) => x.color)
+    .filter((x) => HEX.test(x));
+
+  // Kiinnitä mallin väri sivulta löytyneisiin. Ilman ehdokkaita ei ole mihin
+  // kiinnittää, joten silloin luotetaan malliin sellaisenaan.
+  const pick = (v: unknown, fb: string): string => {
+    if (typeof v !== "string" || !HEX.test(v.trim())) return fb;
+    const hex = v.trim().toLowerCase();
+    if (!cands.length) return hex;
+    return snapToCandidates(hex, cands) ?? fb;
+  };
+
+  const picked = pick(c?.primary, guess.primary);
+
+  // Malli valitsee toisinaan sivulta kyllä löytyvän mutta merkityksettömän
+  // sävyn: kotipizza.fi:llä se otti kertaalleen esiintyneen vaalean keltaisen
+  // ohi seitsemästä vihreästä, jotka ovat yrityksen todellinen väri.
+  // Verrataan valinta parhaaseen ehdokkaaseen ja korjataan selvä ohitus.
+  const bestScore = cands.length
+    ? Math.max(...cands.map((x, i) => brandScore(x, i)))
+    : 0;
+  const rank = cands.indexOf(picked);
+  const pickedScore = brandScore(picked, rank === -1 ? cands.length : rank);
+  const primary =
+    bestScore > 0 && pickedScore < bestScore * PRIMARY_SCORE_FLOOR
+      ? guess.primary
+      : picked;
 
   return {
-    primary: pick(c?.primary, guess.primary),
+    primary,
     secondary: pick(c?.secondary, guess.secondary),
     accent: pick(c?.accent, guess.accent),
     background: pick(c?.background, guess.background),
     text: pick(c?.text, guess.text),
   };
+}
+
+/**
+ * Kuvaa väriehdokkaat mallille niin, että kylläisyys ja kirkkaus näkyvät.
+ * Pelkkä hex ja esiintymismäärä johtaa harhaan: sivun yleisin väri on lähes
+ * aina valkoinen, eikä esiintymismäärä kerro mikä väreistä on brändiväri.
+ */
+function describeCandidates(cands: { color: string; count: number }[]): string {
+  return cands
+    .map((c) => {
+      const s = sat(c.color);
+      const l = lum(c.color);
+      const kind =
+        s < 0.15
+          ? "neutraali"
+          : l > 0.82
+          ? "vaalea pastelli"
+          : l < 0.06
+          ? "lähes musta"
+          : "kylläinen";
+      return `${c.color} — ${c.count}× · ${kind} · ${hueName(c.color)}`;
+    })
+    .join("\n");
+}
+
+/** Sävyn nimi suomeksi. Auttaa mallia näkemään, että sivun kylläiset värit
+ *  ovat saman sävyn eri kirkkauksia — silloin se sävy on brändiväri. */
+function hueName(hex: string): string {
+  const [r, g, b] = rgb(hex).map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (d < 0.04) return "harmaasävy";
+  let h: number;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  if (h < 15 || h >= 345) return "punainen";
+  if (h < 45) return "oranssi";
+  if (h < 70) return "keltainen";
+  if (h < 165) return "vihreä";
+  if (h < 200) return "turkoosi";
+  if (h < 260) return "sininen";
+  if (h < 290) return "violetti";
+  return "magenta";
 }
 
 // ------------------------------------------------- heuristinen varapaletti
@@ -330,25 +468,40 @@ function sat(hex: string): number {
   return max === 0 ? 0 : (max - min) / max;
 }
 
-/** Arvaa paletti pelkistä väriehdokkaista, kun Claudea ei ole käytettävissä. */
+/** Arvaa paletti pelkistä väriehdokkaista. Tämä on sekä varapaletti ilman
+ *  Claudea että vertailukohta, jota vasten mallin valinta tarkistetaan. */
 function guessPalette(s: ScrapeResult): BrandCard["colors"] {
   const cands = s.colorCandidates.map((c) => c.color).filter((c) => HEX.test(c));
 
   // Brändiväri: kylläisin, ei liian vaalea eikä liian tumma, painotettuna yleisyydellä.
   const scored = cands
-    .map((c, i) => ({
-      c,
-      score:
-        sat(c) * 2 +
-        (lum(c) > 0.06 && lum(c) < 0.72 ? 0.8 : 0) -
-        i * 0.02,
-    }))
+    .map((c, i) => ({ c, score: brandScore(c, i) }))
     .filter((x) => sat(x.c) > 0.25)
     .sort((a, b) => b.score - a.score);
 
   const primary = scored[0]?.c ?? "#1f4fd8";
-  const secondary = scored[1]?.c ?? primary;
-  const accent = scored.find((x) => x.c !== primary)?.c ?? primary;
+
+  const distinct = (a: string, b: string) =>
+    colorDistance(a, b) > SNAP_MAX_DISTANCE;
+
+  // Korostusväri on painikkeen väri, joten ei riitä että se on eri kuin
+  // pääväri: sen on erotuttava vaaleasta pohjasta ja kannettava luettavaa
+  // tekstiä. Saman sävyn tummempi versio on tähän usein paras vaihtoehto,
+  // ja brändeillä sellainen yleensä on — aiemmin tähän valikoitui vain
+  // "jokin muu kuin primary", joka saattoi olla lukukelvoton painikkeena.
+  const usableCta = (c: string) =>
+    distinct(c, primary) &&
+    contrast(c, "#ffffff") >= 3 &&
+    contrast(readableOnColor(c), c) >= 4.5;
+
+  const accent =
+    scored.find((x) => usableCta(x.c))?.c ??
+    scored.find((x) => distinct(x.c, primary))?.c ??
+    primary;
+
+  const secondary =
+    scored.find((x) => distinct(x.c, primary) && distinct(x.c, accent))?.c ??
+    accent;
 
   const lights = cands.filter((c) => lum(c) > 0.82);
   const darks = cands.filter((c) => lum(c) < 0.12);

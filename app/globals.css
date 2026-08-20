@@ -230,10 +230,19 @@ body {
   margin-bottom: var(--space-4);
 }
 
+/* Kortti, jonka sisällä on kiinnitetty toimintopalkki, ei voi leikata
+   ylivuotoaan: overflow:hidden tekee kortista vierityskontekstin, jolloin
+   position:sticky ei tartu näkymään lainkaan. Pyöristys hoidetaan siksi
+   lapsielementeille erikseen. */
+.card.sticky-host {
+  overflow: visible;
+}
+
 /* Signature-väripalkki: yksivärinen, hiljainen tunniste. */
 .card-bar {
   height: var(--bar-height);
   background: var(--violet);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .card-bar.green {
@@ -493,19 +502,44 @@ button.tiny {
   text-align: center;
 }
 
-.swatches {
-  display: flex;
+/* Ohjeteksti kentän alla. Selittää kentän tarkoituksen ilman että
+   käyttäjän tarvitsee tuntea mainosalan sanastoa. */
+.hint {
+  margin: 6px 0 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  max-width: 70ch;
+}
+
+label + .hint {
+  margin-top: -2px;
+  margin-bottom: var(--space-2);
+}
+
+/* ---------------------------------------------- värien roolit */
+/* Väri ilman selitystä ei kerro mitään: "Korostus" ei paljasta, että kyse
+   on painikkeen väristä. Rooli kirjoitetaan jokaisen ruudun viereen. */
+.colorroles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: var(--space-2);
-  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
 }
 
-.swatch {
-  text-align: center;
+.colorrole {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--white);
 }
 
-.swatch input[type="color"] {
-  width: 60px;
+.colorrole input[type="color"] {
+  width: 46px;
   height: 46px;
+  flex: 0 0 auto;
   border: 2px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: none;
@@ -513,14 +547,102 @@ button.tiny {
   cursor: pointer;
 }
 
-.swatch span {
+.colorrole-text {
+  min-width: 0;
+}
+
+.colorrole-text strong {
+  display: block;
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+.colorrole-text code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.colorrole-text span {
+  display: block;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ---------------------------------------------- värien esikatselu */
+.cpreview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-2);
+}
+
+.cpreview-item {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--white);
+}
+
+.cpreview-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-soft);
+}
+
+.cpreview-head strong {
+  display: block;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+
+.cpreview-head span {
   display: block;
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: var(--space-1);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-  text-transform: none;
+  margin-top: 2px;
+}
+
+/* Pienoismainos: sama pinorakenne kuin oikeassa bannerissa — nimi, otsikko,
+   painike — jotta värien keskinäinen suhde näkyy oikein. */
+.cpreview-ad {
+  padding: 16px;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cpreview-name {
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+  opacity: 0.9;
+}
+
+.cpreview-headline {
+  font-size: 17px;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.cpreview-cta {
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
 }
 
 .images {
@@ -762,7 +884,64 @@ button.tiny {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------------------------------------------- kiinnitetty toimintopalkki */
+/* Brändikortti on yli kaksi ruudunkorkeutta pitkä. Ilman tätä "Tee mainokset"
+   jäi kokonaan näkymän ulkopuolelle, eikä ensikertalainen voinut tietää että
+   sivua pitää vierittää. Palkki tarttuu kortin alareunaan. */
+.stickybar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.stickybar-note {
+  font-size: var(--text-small);
+  color: var(--text-muted);
+}
+
+.stickybar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 /* ---------------------------------------------- merkit ja tarkistukset */
+
+/* Tekniset tarkistukset ovat oletuksena kiinni: läpimennyt "Ei jQueryä"
+   hämmentää pk-yrittäjää enemmän kuin rauhoittaa, ja merkki kertoo jo
+   olennaisen. Epäonnistuneet näkyvät aina ilman avaamista. */
+.details-toggle {
+  background: transparent;
+  border: 0;
+  padding: var(--space-2) 0 0;
+  margin: 0;
+  color: var(--violet-on-light);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.details-toggle:hover {
+  text-decoration: underline;
+}
+
+.details-toggle:active:not(:disabled) {
+  transform: none;
+}
 .badge {
   display: inline-block;
   font-size: var(--text-caption);

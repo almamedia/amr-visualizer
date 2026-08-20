@@ -6,7 +6,7 @@ import {
 } from "./specs";
 import { generateCopy } from "./claude";
 import { toDataUri } from "./assets";
-import { compressImage, measureLuminance, renderToImage } from "./render";
+import { compressImage, measureLogoVisibility, renderToImage } from "./render";
 import {
   renderBannerHtml,
   resolveBannerColors,
@@ -25,8 +25,14 @@ import type {
 const KB = 1024;
 const RENDER_CONCURRENCY = 3;
 const MAX_LOGO_BYTES = 80 * KB;
-/** Alle tämän logo hukkuu taustaan eikä sitä kannata käyttää. */
-const MIN_LOGO_CONTRAST = 1.6;
+/**
+ * Kuinka suuren osan logon näkyvistä pikseleistä on erotuttava pohjasta.
+ * Logo on usein piirretty valkoisen levyn päälle, jolloin suurin osa
+ * pinnasta on pohjan väriä ja vain teksti erottuu — 5 % riittää siihen,
+ * että logo on tunnistettavissa, ja pudottaa silti aidon negaversion,
+ * jossa erottuvia pikseleitä ei ole lainkaan.
+ */
+const MIN_LOGO_VISIBLE_RATIO = 0.05;
 
 /** HTML5-paketissa kuva jakaa painobudjetin merkkauksen kanssa. */
 const IMAGE_BUDGET_RATIO = 0.5;
@@ -89,11 +95,13 @@ export async function generateAssets(
   if (logoRaw && approxBytes(logoRaw) > MAX_LOGO_BYTES) {
     logoDataUri = null;
     warnings.push(
-      "Logo oli liian raskas painorajaan — aineistoissa käytetään yrityksen nimeä tekstinä."
+      "Logotiedosto on liian suuri mainoksiin, joten niissä näkyy yrityksen nimi tekstinä. Voit ladata kevyemmän logon edellisessä vaiheessa."
     );
   }
   if (opts.brand.logoUrl && !logoRaw) {
-    warnings.push("Logon lataus epäonnistui — käytetään yrityksen nimeä tekstinä.");
+    warnings.push(
+      "Logoa ei saatu ladattua, joten mainoksissa näkyy yrityksen nimi tekstinä. Voit ladata logon itse edellisessä vaiheessa."
+    );
   }
 
   // Logo voi latautua moitteettomasti ja silti kadota taustaan (negaversio
@@ -103,22 +111,22 @@ export async function generateAssets(
   const bannerColors = resolveBannerColors(opts.brand, Boolean(imageRaw));
 
   if (logoDataUri) {
-    const logoLum = await measureLuminance(logoDataUri);
-    if (logoLum !== null) {
-      const bgLum = relativeLuminance(bannerColors.ground);
-      const contrast =
-        (Math.max(logoLum, bgLum) + 0.05) / (Math.min(logoLum, bgLum) + 0.05);
-      if (contrast < MIN_LOGO_CONTRAST) {
-        logoDataUri = null;
-        warnings.push(
-          "Logo ei erotu taustasta (todennäköisesti negaversio) — aineistoissa käytetään yrityksen nimeä tekstinä. Voit vaihtaa taustavärin tai poistaa logon brändikortissa."
-        );
-      }
+    const visible = await measureLogoVisibility(
+      logoDataUri,
+      bannerColors.ground
+    );
+    if (visible !== null && visible < MIN_LOGO_VISIBLE_RATIO) {
+      logoDataUri = null;
+      // Yleisin syy on vaalea logo vaalealla pohjalla. "Negaversio" on
+      // painoalan sana, jota pk-yrittäjän ei tarvitse tuntea.
+      warnings.push(
+        "Logosi on liian vaalea erottumaan mainoksen pohjasta, joten mainoksissa näkyy yrityksen nimi tekstinä. Jos sinulla on tummempi versio logosta, lataa se edellisessä vaiheessa."
+      );
     }
   }
   if (activeImage && !imageRaw) {
     warnings.push(
-      "Valitun kuvan lataus epäonnistui — aineistot rakennettiin ilman kuvaa."
+      "Valittua kuvaa ei saatu ladattua, joten mainokset tehtiin ilman kuvaa. Voit ladata oman kuvan edellisessä vaiheessa."
     );
   }
 
@@ -168,6 +176,7 @@ export async function generateAssets(
       id: `${fmt.id}-${job.variant.id}`,
       formatId: fmt.id,
       formatName: fmt.name,
+      formatPlainName: fmt.plainName,
       kind: "static",
       width: fmt.width,
       height: fmt.height,
@@ -217,6 +226,7 @@ export async function generateAssets(
       id: `${h5.id}-${variant.id}`,
       formatId: h5.id,
       formatName: h5.name,
+      formatPlainName: h5.plainName,
       kind: "html5",
       width: h5Base.width,
       height: h5Base.height,
@@ -244,20 +254,13 @@ export async function generateAssets(
   const failed = assets.filter((a) => !a.validation.pass);
   if (failed.length) {
     warnings.push(
-      `${failed.length} aineistoa ei läpäissyt validointia. Katso punaiset kohdat aineistokorteista.`
+      `${failed.length} mainos${
+        failed.length === 1 ? "" : "ta"
+      } vaatii huomiota. Merkitsimme ne alle — avaa mainoksen kohdalta "Mikä vaatii huomiota".`
     );
   }
 
   return { assets, copyVariants, limits, warnings };
-}
-
-function relativeLuminance(hex: string): number {
-  const s = (hex || "#ffffff").replace("#", "");
-  const ch = (i: number) => {
-    const c = parseInt(s.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4);
 }
 
 function approxBytes(dataUri: string): number {

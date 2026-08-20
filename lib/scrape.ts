@@ -49,6 +49,12 @@ export async function scrape(rawUrl: string): Promise<ScrapeResult> {
   const url = normalizeUrl(rawUrl);
   const warnings: string[] = [];
   let html = "";
+  /** Suoran haun HTML säilytetään, vaikka selainrenderöinti korvaisi sen.
+   *  Hydraatio poistaa palvelimen syöttämät tyylit: kotipizza.fi:llä 18 kt
+   *  styled-components-lohko, jossa olivat yrityksen kaikki vihreät, katosi
+   *  renderöinnissä kokonaan ja tilalle tuli Facebook-upotuksen tyylit.
+   *  Värit ja fontit luetaan siksi molemmista versioista. */
+  let rawHtml = "";
   let finalUrl = url;
   let usedPlaywright = false;
 
@@ -56,7 +62,8 @@ export async function scrape(rawUrl: string): Promise<ScrapeResult> {
     const res = await fetchWithTimeout(url, 12000);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     finalUrl = res.url || url;
-    html = await res.text();
+    rawHtml = await res.text();
+    html = rawHtml;
   } catch (e) {
     warnings.push(
       `Suora haku epäonnistui (${
@@ -100,8 +107,8 @@ export async function scrape(rawUrl: string): Promise<ScrapeResult> {
     text: visibleText.slice(0, TEXT_LIMIT),
     logoCandidates: await verifyReachable(findLogos($, finalUrl)),
     imageCandidates: findImages($, finalUrl),
-    colorCandidates: await findColors($, finalUrl, html),
-    fontCandidates: findFonts(html),
+    colorCandidates: await findColors($, finalUrl, html, rawHtml),
+    fontCandidates: findFonts(html, rawHtml),
     usedPlaywright,
     warnings,
   };
@@ -271,17 +278,52 @@ function findImages(
 const HEX_RE = /#([0-9a-f]{6}|[0-9a-f]{3})\b/gi;
 const RGB_RE = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/gi;
 
+/**
+ * Upotettujen widgettien omat tyylilohkot. Näiden värit kuuluvat Facebookille,
+ * Googlelle tai evästebannerin toimittajalle — eivät mainostajalle.
+ * kotipizza.fi:llä Facebook-SDK:n 5 kt tyylilohko toi yhdeksän sinistä
+ * ehdokaslistalle ja työnsi yrityksen oman vihreän ulos kärjestä.
+ */
+const THIRD_PARTY_CSS =
+  /\.fb_|fb_dialog|\.twitter-|grecaptcha|\.g-recaptcha|\.gm-style|cookieconsent|onetrust|cookiebot|__cmp|#ld-chat|#ld-bot/i;
+
+/**
+ * Tunnettujen alustojen brändivärit. Varmistus siltä varalta, että upotuksen
+ * tyylilohko ei tunnistu yllä olevasta kuviosta. Nämä eivät voi olla
+ * suomalaisen pk-yrityksen brändivärejä siinä mielessä, että ne päätyvät
+ * sivulle jaa-painikkeen tai kartan mukana.
+ */
+const THIRD_PARTY_COLORS = new Set([
+  // Facebook / Meta
+  "#4267b2", "#3b5998", "#365899", "#6d84b4", "#738aba", "#8b9dc3",
+  "#dfe3ee", "#f5f6f7", "#1877f2", "#2c4987", "#2a4887", "#29487d", "#043b87",
+  // X / Twitter, LinkedIn, WhatsApp
+  "#1da1f2", "#0a66c2", "#0077b5", "#25d366", "#128c7e",
+  // Google (Maps, reCAPTCHA, kirjautuminen)
+  "#4285f4", "#34a853", "#fbbc05", "#ea4335",
+]);
+
+/** Kerää CSS:n yhdestä dokumentista, ohittaen kolmannen osapuolen lohkot. */
+function collectInlineCss(doc: string): string {
+  const d = cheerio.load(doc);
+  let css = "";
+  d("style").each((_, el) => {
+    const text = d(el).text();
+    if (THIRD_PARTY_CSS.test(text)) return;
+    css += "\n" + text;
+  });
+  d("[style]").each((_, el) => {
+    css += "\n" + (d(el).attr("style") ?? "");
+  });
+  return css;
+}
+
 async function findColors(
   $: cheerio.CheerioAPI,
   base: string,
-  html: string
+  html: string,
+  rawHtml: string
 ): Promise<{ color: string; count: number }[]> {
-  let css = "";
-
-  $("style").each((_, el) => {
-    css += "\n" + $(el).text();
-  });
-
   // Hae muutama ensimmäinen tyylitiedosto — sieltä löytyvät CSS-muuttujat.
   const sheets: string[] = [];
   $('link[rel="stylesheet"]').each((_, el) => {
@@ -290,7 +332,7 @@ async function findColors(
   });
 
   const fetched = await Promise.all(
-    sheets.slice(0, 4).map(async (u) => {
+    sheets.slice(0, 6).map(async (u) => {
       try {
         const r = await fetchWithTimeout(u, 6000);
         if (!r.ok) return "";
@@ -301,21 +343,25 @@ async function findColors(
       }
     })
   );
-  css += "\n" + fetched.join("\n");
 
-  // Inline style -attribuutit.
-  $("[style]").each((_, el) => {
-    css += "\n" + ($(el).attr("style") ?? "");
-  });
+  // Molemmat dokumentit: renderöity versio näkee JS:llä rakennetun sivun,
+  // suora haku näkee palvelimen syöttämät tyylit, jotka hydraatio poistaa.
+  // Kumpikaan yksin ei riitä.
+  const docs = rawHtml && rawHtml !== html ? [html, rawHtml] : [html];
+  const css =
+    fetched.join("\n") + "\n" + docs.map(collectInlineCss).join("\n");
 
   // CSS-muuttujat painotetaan: ne ovat lähes aina brändivärejä.
-  const varDecls = css.match(/--[\w-]*(?:color|brand|primary|accent|bg|theme)[\w-]*\s*:\s*[^;]+/gi) ?? [];
+  const varDecls =
+    css.match(
+      /--[\w-]*(?:color|brand|primary|accent|bg|theme)[\w-]*\s*:\s*[^;]+/gi
+    ) ?? [];
   const weighted = css + "\n" + varDecls.join(";\n").repeat(6);
 
   const counts = new Map<string, number>();
   const bump = (hex: string, by = 1) => {
     const norm = normalizeHex(hex);
-    if (!norm) return;
+    if (!norm || THIRD_PARTY_COLORS.has(norm)) return;
     counts.set(norm, (counts.get(norm) ?? 0) + by);
   };
 
@@ -332,7 +378,9 @@ async function findColors(
   // Suosi värejä, jotka esiintyvät myös HTML:ssä (teemavärit, brand-tagit).
   const themeColor = $('meta[name="theme-color"]').attr("content");
   if (themeColor) bump(themeColor, 25);
-  for (const m of html.matchAll(HEX_RE)) bump(m[0], 0.2);
+  for (const doc of docs) {
+    for (const m of doc.matchAll(HEX_RE)) bump(m[0], 0.2);
+  }
 
   return [...counts.entries()]
     .map(([color, count]) => ({ color, count: Math.round(count) }))
@@ -352,10 +400,16 @@ function normalizeHex(hex: string): string | null {
   return "#" + s;
 }
 
-function findFonts(html: string): string[] {
+/** Fontit luetaan samasta syystä molemmista versioista kuin värit: hydraatio
+ *  voi viedä mukanaan lohkon, jossa sivun oma typografia määritellään.
+ *  Kolmannen osapuolen lohkot ohitetaan tässäkin — Facebook-upotus ehdotti
+ *  kotipizza.fi:n otsikkofontiksi omaa Lucida Grandea. */
+function findFonts(html: string, rawHtml: string): string[] {
   const out = new Set<string>();
+  const docs = rawHtml && rawHtml !== html ? [html, rawHtml] : [html];
+  const source = docs.map(collectInlineCss).join("\n");
 
-  for (const m of html.matchAll(/font-family\s*:\s*([^;}"']+)/gi)) {
+  for (const m of source.matchAll(/font-family\s*:\s*([^;}"']+)/gi)) {
     const first = m[1]
       .split(",")[0]
       .replace(/["']/g, "")
@@ -370,11 +424,13 @@ function findFonts(html: string): string[] {
   }
 
   // Google Fonts -linkit kertovat brändifontin suoraan.
-  for (const m of html.matchAll(
-    /fonts\.googleapis\.com\/css2?\?([^"'>]+)/gi
-  )) {
-    for (const f of m[1].matchAll(/family=([^&:]+)/gi)) {
-      out.add(decodeURIComponent(f[1].replace(/\+/g, " ")));
+  // Google Fonts -linkit ovat <link>-elementeissä, ei tyylilohkoissa, joten
+  // ne etsitään suoraan dokumenteista.
+  for (const doc of docs) {
+    for (const m of doc.matchAll(/fonts\.googleapis\.com\/css2?\?([^"'>]+)/gi)) {
+      for (const f of m[1].matchAll(/family=([^&:]+)/gi)) {
+        out.add(decodeURIComponent(f[1].replace(/\+/g, " ")));
+      }
     }
   }
 

@@ -68,17 +68,17 @@ function contrastChecks(c: ContrastInput): ValidationCheck[] {
   return [
     check(
       "contrast-text",
-      "Tekstin kontrasti",
+      "Teksti erottuu taustasta",
       textRatio >= MIN_TEXT_CONTRAST,
-      `${textRatio.toFixed(1)}:1 (vaadittu ${MIN_TEXT_CONTRAST}:1)`
+      `kontrasti ${textRatio.toFixed(1)}:1, vaaditaan ${MIN_TEXT_CONTRAST}:1`
     ),
     check(
       "contrast-cta",
-      "CTA erottuu pohjasta",
+      "Painike erottuu taustasta",
       ctaRatio >= MIN_CTA_SEPARATION && ctaTextRatio >= MIN_TEXT_CONTRAST,
-      `nappi ${ctaRatio.toFixed(1)}:1 · teksti napissa ${ctaTextRatio.toFixed(
+      `painike ${ctaRatio.toFixed(
         1
-      )}:1`
+      )}:1, teksti painikkeen päällä ${ctaTextRatio.toFixed(1)}:1`
     ),
   ];
 }
@@ -94,9 +94,9 @@ export function validateStatic(input: StaticInput): ValidationResult {
   checks.push(
     check(
       "dimensions",
-      "Mitat",
+      "Oikea koko Alman mainospaikkaan",
       input.width === fmt.width && input.height === fmt.height,
-      `${input.width}×${input.height} px (vaadittu ${fmt.width}×${fmt.height})`
+      `${input.width}×${input.height} px, vaaditaan ${fmt.width}×${fmt.height}`
     )
   );
 
@@ -104,21 +104,23 @@ export function validateStatic(input: StaticInput): ValidationResult {
   checks.push(
     check(
       "filesize",
-      "Tiedostokoko",
+      "Tiedosto tarpeeksi kevyt",
       input.fileSizeBytes <= maxBytes,
-      `${Math.round(input.fileSizeBytes / KB)} kt / max ${fmt.maxFileSizeKb} kt`
+      `${Math.round(input.fileSizeBytes / KB)} kt, enintään ${
+        fmt.maxFileSizeKb
+      } kt`
     )
   );
 
   checks.push(
     check(
       "filetype",
-      "Tiedostomuoto",
+      "Alman hyväksymä tiedostomuoto",
       fmt.acceptedTypes.includes(input.fileType),
-      `${input.fileType.toUpperCase()} (sallitut: ${fmt.acceptedTypes
+      `${input.fileType.toUpperCase()} — hyväksytään ${fmt.acceptedTypes
         .filter((t) => specs.global.acceptedStaticFormats.includes(t))
         .join(", ")
-        .toUpperCase()})`
+        .toUpperCase()}`
     )
   );
 
@@ -129,7 +131,7 @@ export function validateStatic(input: StaticInput): ValidationResult {
     checks.push(
       check(
         "aiact",
-        "AI Act -merkintä",
+        "Tekoälymerkintä mainoksessa",
         input.hasAiActLabel,
         `"${specs.global.aiActLabel}"`
       )
@@ -160,9 +162,9 @@ export function validateHtml5(input: Html5Input): ValidationResult {
   checks.push(
     check(
       "dimensions",
-      "Mitat",
+      "Oikea koko Alman mainospaikkaan",
       input.width === base.width && input.height === base.height,
-      `${input.width}×${input.height} px (vaadittu ${base.width}×${base.height})`
+      `${input.width}×${input.height} px, vaaditaan ${base.width}×${base.height}`
     )
   );
 
@@ -170,18 +172,20 @@ export function validateHtml5(input: Html5Input): ValidationResult {
   checks.push(
     check(
       "filesize",
-      "Alkulatauksen koko",
+      "Tiedosto tarpeeksi kevyt",
       input.fileSizeBytes <= maxBytes,
-      `${Math.round(input.fileSizeBytes / KB)} kt / max ${h5.maxFileSizeKb} kt`
+      `${Math.round(input.fileSizeBytes / KB)} kt, enintään ${
+        h5.maxFileSizeKb
+      } kt`
     )
   );
 
   checks.push(
     check(
       "animation",
-      "Animaation kesto",
+      "Liike tarpeeksi lyhyt",
       input.animationSeconds <= h5.maxAnimationSeconds,
-      `${input.animationSeconds} s / max ${h5.maxAnimationSeconds} s`
+      `${input.animationSeconds} s, enintään ${h5.maxAnimationSeconds} s`
     )
   );
 
@@ -190,11 +194,11 @@ export function validateHtml5(input: Html5Input): ValidationResult {
   checks.push(
     check(
       "https",
-      "HTTPS-resurssit",
+      "Turvallinen yhteys",
       !insecure,
       insecure
-        ? `${insecure.length} http-resurssia`
-        : "Ei http-resursseja"
+        ? `${insecure.length} suojaamatonta latausta`
+        : "Kaikki ladataan suojatusti"
     )
   );
 
@@ -202,9 +206,9 @@ export function validateHtml5(input: Html5Input): ValidationResult {
   checks.push(
     check(
       "nojquery",
-      "Ei jQueryä",
+      "Tekniikka Alman ohjeiden mukainen",
       !/jquery/i.test(input.html),
-      "Alma: vältä jQueryä tiedostopainon vuoksi"
+      "Ei raskaita ulkoisia kirjastoja"
     )
   );
 
@@ -214,7 +218,7 @@ export function validateHtml5(input: Html5Input): ValidationResult {
     checks.push(
       check(
         "aiact",
-        "AI Act -merkintä",
+        "Tekoälymerkintä mainoksessa",
         input.hasAiActLabel,
         `"${specs.global.aiActLabel}"`
       )
@@ -231,19 +235,19 @@ function textChecks(
   return [
     check(
       "headline",
-      "Otsikon pituus",
+      "Otsikko mahtuu",
       copy.headline.length <= limits.headline,
       `${copy.headline.length} / ${limits.headline} merkkiä`
     ),
     check(
       "body",
-      "Leipätekstin pituus",
+      "Leipäteksti mahtuu",
       copy.body.length <= limits.body,
       `${copy.body.length} / ${limits.body} merkkiä`
     ),
     check(
       "cta",
-      "CTA:n pituus",
+      "Painikkeen teksti mahtuu",
       copy.cta.length <= limits.cta,
       `${copy.cta.length} / ${limits.cta} merkkiä`
     ),
@@ -261,11 +265,13 @@ function charsetCheck(copy: CopyVariant): ValidationCheck {
   const found = [...new Set(all.match(NON_LATIN) ?? [])];
   return check(
     "charset",
-    "Merkistö",
+    "Teksti on oikeaa suomea",
     found.length === 0,
     found.length
-      ? `Vieraita merkkejä: ${found.join(" ")}`
-      : "Vain latinalaisia merkkejä"
+      ? `Tekstissä on vieraita kirjaimia: ${found.join(
+          " "
+        )}. Korjaa ne tai kirjoita tekstit uudelleen.`
+      : "Ei vieraita kirjaimia"
   );
 }
 
