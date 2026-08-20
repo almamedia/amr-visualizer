@@ -1,0 +1,10 @@
+{
+  "note": "Maps onboarding channel ids (lib/onboarding/data/channels.json) to Xandr placement and publisher ids. The ids are NOT known yet — AMS Ad Ops owns them. Null means the channel cannot be targeted and the booking says so out loud rather than sending an empty profile that would run everywhere.",
+  "provisional": true,
+  "owner": "AMS Ad Ops",
+  "channels": [
+    { "id": "iltalehti", "publisherId": null, "placementIds": [] },
+    { "id": "kauppalehti", "publisherId": null, "placementIds": [] },
+    { "id": "etuovi", "publisherId": null, "placementIds": [] }
+  ]
+}
