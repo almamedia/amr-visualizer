@@ -77,6 +77,10 @@ export interface BusinessSignals {
   businessName: string;
   /** Free-form industry label, e.g. "dental clinic". */
   industry: string;
+  /** IAB Content Taxonomy 3.1 Name inferred from the site. */
+  contentType: string;
+  /** Next-best IAB names shown as dropdown alternatives. */
+  contentTypeAlternatives: string[];
   /** Coarse bucket the recommendation engine can branch on. */
   category:
     | "real-estate"
@@ -103,6 +107,8 @@ export interface BusinessSignals {
 export interface ConfirmedBusiness {
   businessName: string;
   industry: string;
+  contentType: string;
+  contentTypeAlternatives: string[];
   productsOrServices: string;
   location: string;
 }

@@ -9,6 +9,8 @@ import type {
 } from "@/lib/types";
 import { BRIEF_STORAGE_KEY } from "@/lib/onboarding/brief";
 import type { CreativeBrief, GoalId as BriefGoalId } from "@/lib/onboarding/types";
+import { normalizeBrandContentType } from "@/lib/content-taxonomy";
+import { ContentTypeSelect } from "@/app/components/content-type-select";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -86,7 +88,7 @@ export default function Studio() {
       if (wanted.length) setFormatIds(wanted);
 
       if (incoming.brand) {
-        setBrand(incoming.brand);
+        setBrand(normalizeBrandContentType(incoming.brand));
         setUrl(incoming.brand.sourceUrl);
         setPhase("brand");
       }
@@ -109,7 +111,7 @@ export default function Studio() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed.");
 
-      setBrand(data.brand);
+      setBrand(normalizeBrandContentType(data.brand));
       setAiEnabled(data.meta?.aiEnabled ?? true);
       setWarnings(data.brand?.warnings ?? []);
       setPhase("brand");
@@ -698,12 +700,17 @@ function BrandEditor({
               />
             </div>
             <div style={{ flex: 1 }}>
-              <label htmlFor="industry">Industry</label>
-              <input
-                id="industry"
-                type="text"
-                value={brand.industry}
-                onChange={(e) => set("industry", e.target.value)}
+              <label htmlFor="content-type">Content type</label>
+              <ContentTypeSelect
+                value={brand.contentType}
+                alternatives={brand.contentTypeAlternatives}
+                onChange={(next) =>
+                  onChange({
+                    ...brand,
+                    contentType: next.contentType,
+                    contentTypeAlternatives: next.contentTypeAlternatives,
+                  })
+                }
               />
             </div>
           </div>

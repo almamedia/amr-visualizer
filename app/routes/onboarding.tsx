@@ -49,6 +49,11 @@ import type {
   GoalId,
   StartMode,
 } from "@/lib/onboarding/types";
+import { ContentTypeSelect } from "@/app/components/content-type-select";
+import {
+  categoryFromContentType,
+  resolveContentTypePicks,
+} from "@/lib/content-taxonomy";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -103,15 +108,6 @@ function questionSteps(urlSkipped: boolean): Step[] {
 /** Past this the scrape is treated as a failure and the flow moves on. */
 const ANALYSIS_TIMEOUT_MS = 30000;
 
-/** Industry buckets shown on the confirmation card. */
-const CATEGORY_OPTIONS: { id: BusinessSignals["category"]; label: string }[] = [
-  { id: "local-services", label: "Local services" },
-  { id: "ecommerce", label: "Online shop" },
-  { id: "b2b-professional", label: "Business and professional services" },
-  { id: "real-estate", label: "Property and housing" },
-  { id: "other", label: "Something else" },
-];
-
 const EMPTY_ANSWERS: FlowAnswers = {
   url: "",
   urlSkipped: false,
@@ -124,6 +120,8 @@ const EMPTY_ANSWERS: FlowAnswers = {
 const EMPTY_BUSINESS: ConfirmedBusiness = {
   businessName: "",
   industry: "",
+  contentType: "",
+  contentTypeAlternatives: [],
   productsOrServices: "",
   location: "",
 };
@@ -239,7 +237,6 @@ export default function OnboardingPage() {
         <BrandStep
           analysis={analysis}
           business={business}
-          category={category}
           onBusinessChange={setBusiness}
           onCategoryChange={setCategory}
           onNext={next}
@@ -828,7 +825,6 @@ function BudgetStep({
 function BrandStep({
   analysis,
   business,
-  category,
   onBusinessChange,
   onCategoryChange,
   onNext,
@@ -837,7 +833,6 @@ function BrandStep({
 }: {
   analysis: AnalysisState;
   business: ConfirmedBusiness;
-  category: BusinessSignals["category"];
   onBusinessChange: (b: ConfirmedBusiness) => void;
   onCategoryChange: (c: BusinessSignals["category"]) => void;
   onNext: () => void;
@@ -850,17 +845,28 @@ function BrandStep({
   // advertiser owns these fields and a re-render must not overwrite them.
   const seeded = useRef(false);
   useEffect(() => {
-    if (seeded.current || !signals) return;
+    if (seeded.current || (!signals && !brand)) return;
     seeded.current = true;
+    const content = resolveContentTypePicks(
+      brand?.contentType || signals?.contentType || signals?.industry || "",
+      brand?.contentTypeAlternatives ??
+        signals?.contentTypeAlternatives ??
+        []
+    );
     onBusinessChange({
-      businessName: signals.businessName,
-      industry: signals.industry,
-      productsOrServices: signals.productsOrServices,
-      location: signals.geographicSignal,
+      businessName: signals?.businessName || brand?.companyName || "",
+      industry: content.contentType || signals?.industry || "",
+      contentType: content.contentType,
+      contentTypeAlternatives: content.contentTypeAlternatives,
+      productsOrServices:
+        signals?.productsOrServices || brand?.description || "",
+      location: signals?.geographicSignal || "",
     });
-    onCategoryChange(signals.category);
+    onCategoryChange(
+      signals?.category ?? categoryFromContentType(content.contentType)
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signals]);
+  }, [signals, brand]);
 
   if (status === "running") {
     return (
@@ -879,7 +885,7 @@ function BrandStep({
     );
   }
 
-  if (status === "failed" || !signals) {
+  if (!signals && !brand) {
     return (
       <div className="ob-card">
         <h2 className="ob-q">We couldn&rsquo;t read your site</h2>
@@ -925,7 +931,7 @@ function BrandStep({
         — is built on this. Correct anything that&rsquo;s off.
       </p>
 
-      {signals.summary && <p className="ob-summary">{signals.summary}</p>}
+      {signals?.summary && <p className="ob-summary">{signals.summary}</p>}
 
       <div className="ob-confirm-grid" style={{ marginTop: "var(--space-4)" }}>
         <div className="ob-field">
@@ -939,20 +945,22 @@ function BrandStep({
         </div>
 
         <div className="ob-field">
-          <label htmlFor="ob-cat">Industry</label>
-          <select
-            id="ob-cat"
-            value={category}
-            onChange={(e) =>
-              onCategoryChange(e.target.value as BusinessSignals["category"])
-            }
-          >
-            {CATEGORY_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <label htmlFor="content-type">Content type</label>
+          <ContentTypeSelect
+            value={business.contentType}
+            alternatives={business.contentTypeAlternatives}
+            onChange={(next) => {
+              onBusinessChange({
+                ...business,
+                contentType: next.contentType,
+                contentTypeAlternatives: next.contentTypeAlternatives,
+                industry: next.contentType,
+              });
+              if (next.contentType) {
+                onCategoryChange(categoryFromContentType(next.contentType));
+              }
+            }}
+          />
         </div>
 
         <div className="ob-field full">
@@ -1054,7 +1062,9 @@ function RecommendationStep({
     return {
       ...analysis.signals,
       businessName: business.businessName,
-      industry: business.industry,
+      industry: business.contentType || business.industry,
+      contentType: business.contentType,
+      contentTypeAlternatives: business.contentTypeAlternatives,
       productsOrServices: business.productsOrServices,
       geographicSignal: business.location,
       category,

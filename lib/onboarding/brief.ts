@@ -30,7 +30,7 @@ export function buildCreativeBrief(
   return {
     version: 1,
     businessName: business.businessName,
-    industry: business.industry,
+    industry: business.contentType || business.industry,
     productsOrServices: business.productsOrServices,
     goal: { id: answers.goal ?? "awareness", label: goalLabel(answers.goal) },
     targetRegion: business.location || targetPlace(answers),
@@ -51,7 +51,16 @@ export function buildCreativeBrief(
       specFormatId: f.format.specFormatId,
     })),
     budgetTier: getBudgetTier(answers.budget.tier).name,
-    brand,
+    brand: brand
+      ? {
+          ...brand,
+          contentType: business.contentType || brand.contentType,
+          contentTypeAlternatives:
+            business.contentTypeAlternatives.length > 0
+              ? business.contentTypeAlternatives
+              : brand.contentTypeAlternatives,
+        }
+      : null,
   };
 }
 

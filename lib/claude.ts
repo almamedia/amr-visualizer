@@ -3,6 +3,10 @@ import type { ScrapeResult } from "./scrape";
 import type { BrandCard, CopyVariant, GoalId, TextLimits } from "./types";
 import { getGoal } from "./specs";
 import type { BusinessSignals } from "./onboarding/types";
+import {
+  inferContentTypeFromText,
+  resolveContentTypePicks,
+} from "./content-taxonomy";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -125,7 +129,8 @@ Reply with JSON ONLY, no explanation and no code fences. Use exactly this shape:
   "companyName": string,
   "description": string,
   "tone": string,
-  "industry": string,
+  "contentType": string,
+  "contentTypeAlternatives": [string, string, string, string],
   "logoUrl": string | null,
   "colors": { "primary": "#rrggbb", "secondary": "#rrggbb", "accent": "#rrggbb", "background": "#rrggbb", "text": "#rrggbb" },
   "fonts": { "heading": string, "body": string },
@@ -137,10 +142,11 @@ Instructions:
 - companyName: the company's name as it appears on the page. Not the slogan, not the domain.
 - description: one or two sentences on what the company does and who for. Concrete, no marketing cliché.
 - tone: tone of voice in two to four words, e.g. "Warm and expert".
-- industry: one or two words, e.g. "Hair salon".
+- contentType: the single best IAB Content Taxonomy 3.1 Name for this website (copy an official Name, e.g. "Bars & Restaurants"). Prefer the most specific matching category. Never invent a label.
+- contentTypeAlternatives: exactly four other official IAB Names — the next-closest matches, ordered closest first. No duplicates, and none equal to contentType.
 - logoUrl: pick the likeliest logo from the candidates, or null if none convinces. Prefer an image whose path or alt text says logo over a favicon. The ad is built on a light ground, so avoid reversed-out versions: if the filename contains white, nega, invert or light, choose another candidate when one is available.
-- colors: pick the real brand colours from the candidates. primary is the most recognisable brand colour. background is the light or dark ground the ad is built on. text stands clearly apart from background (contrast at least 4.5:1). accent is used on the CTA button and must stand apart from background. If no sensible colour is among the candidates, choose a neutral that suits the industry.
-- fonts: pick from the font candidates. If none fit, suggest fonts that suit the industry.
+- colors: pick the real brand colours from the candidates. primary is the most recognisable brand colour. background is the light or dark ground the ad is built on. text stands clearly apart from background (contrast at least 4.5:1). accent is used on the CTA button and must stand apart from background. If no sensible colour is among the candidates, choose a neutral that suits the content type.
+- fonts: pick from the font candidates. If none fit, suggest fonts that suit the content type.
 - imageUrls: pick two to four images suitable for advertising. The images are attached, so look at them. Return the URLs exactly as given, and use the numbering to identify them.
 
   Always reject an image that has:
@@ -157,7 +163,8 @@ interface BrandResponse {
   companyName: string;
   description: string;
   tone: string;
-  industry: string;
+  contentType: string;
+  contentTypeAlternatives: string[];
   logoUrl: string | null;
   colors: BrandCard["colors"];
   fonts: BrandCard["fonts"];
@@ -237,12 +244,20 @@ ${s.text.slice(0, 5000)}
       .slice(0, 4)
       .map((url) => ({ url, alt: known.get(url) ?? "", enabled: true }));
 
+    const content = resolveContentTypePicks(
+      clean(r.contentType),
+      Array.isArray(r.contentTypeAlternatives)
+        ? r.contentTypeAlternatives.map(clean)
+        : []
+    );
+
     return {
       sourceUrl: s.finalUrl,
       companyName: clean(r.companyName) || fallbackName(s),
       description: clean(r.description) || s.metaDescription || "",
       tone: clean(r.tone) || "Clear and straightforward",
-      industry: clean(r.industry) || "",
+      contentType: content.contentType,
+      contentTypeAlternatives: content.contentTypeAlternatives,
       logoUrl: r.logoUrl && r.logoUrl.startsWith("http") ? r.logoUrl : null,
       colors: sanitizeColors(r.colors, s),
       fonts: {
@@ -368,6 +383,11 @@ function mockBrand(s: ScrapeResult): BrandCard {
   // A missing API key is not warned about here — the UI shows its own
   // standing notice, and saying it twice helps nobody.
   const warnings = [...s.warnings];
+  const content = inferContentTypeFromText(
+    [s.title, s.ogTitle, s.metaDescription, s.ogDescription, s.text.slice(0, 4000)]
+      .filter(Boolean)
+      .join("\n")
+  );
   return {
     sourceUrl: s.finalUrl,
     companyName: fallbackName(s),
@@ -377,7 +397,8 @@ function mockBrand(s: ScrapeResult): BrandCard {
       s.text.slice(0, 180).trim() ||
       "Description missing — fill this in by hand.",
     tone: "Clear and straightforward",
-    industry: "",
+    contentType: content.contentType,
+    contentTypeAlternatives: content.contentTypeAlternatives,
     logoUrl: s.logoCandidates[0] ?? null,
     colors: guessPalette(s),
     fonts: {
@@ -430,7 +451,7 @@ export async function generateCopy(
 
   const goal = getGoal(goalId);
   const user = `Company: ${brand.companyName}
-Industry: ${brand.industry || "not known"}
+Content type: ${brand.contentType || "not known"}
 What the company does: ${brand.description}
 Tone of voice: ${brand.tone}
 
@@ -490,7 +511,7 @@ function mockCopy(
   limits: TextLimits
 ): CopyVariant[] {
   const name = brand.companyName;
-  const trade = brand.industry || "what we do";
+  const trade = brand.contentType || "what we do";
 
   const byGoal: Record<GoalId, CopyVariant[]> = {
     awareness: [
@@ -581,6 +602,8 @@ Return ONLY JSON:
 {
   "businessName": string,
   "industry": string,
+  "contentType": string,
+  "contentTypeAlternatives": [string, string, string, string],
   "category": "real-estate" | "b2b-professional" | "ecommerce" | "local-services" | "other",
   "summary": string,
   "productsOrServices": string,
@@ -594,6 +617,8 @@ Return ONLY JSON:
 Rules:
 - Write every string in English, even though the site is likely Finnish.
 - "summary" is one plain sentence a business owner would recognise as their own.
+- "contentType" is the single best IAB Content Taxonomy 3.1 Name for this website (e.g. "Bars & Restaurants", "Real Estate Buying and Selling"). Use an official Name, as specific as possible. Never invent a label.
+- "contentTypeAlternatives" is exactly four other official IAB Names — the next-closest matches, ordered closest first. No duplicates, and none equal to contentType.
 - "geographicSignal" is the city or region the site says it serves, or "" if the site does not say.
 - "national" is true only if the site claims to serve customers across Finland.
 - "ecommerce" is true only if you see a cart, a shop, or product pages with prices.
@@ -649,9 +674,18 @@ function normalizeSignals(r: Partial<BusinessSignals>): BusinessSignals | null {
 
   const confidence = Number(r.confidence);
 
+  const content = resolveContentTypePicks(
+    clean(r.contentType) || clean(r.industry),
+    Array.isArray(r.contentTypeAlternatives)
+      ? r.contentTypeAlternatives.map(clean)
+      : []
+  );
+
   return {
     businessName,
-    industry: clean(r.industry),
+    industry: content.contentType || clean(r.industry),
+    contentType: content.contentType,
+    contentTypeAlternatives: content.contentTypeAlternatives,
     category,
     summary: clean(r.summary),
     productsOrServices: clean(r.productsOrServices),

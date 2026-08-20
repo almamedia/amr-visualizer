@@ -441,6 +441,14 @@
   min-height: 48px;
 }
 
+.ob-field .content-type-trigger {
+  min-height: 48px;
+}
+
+.ob-field .content-type-menu {
+  z-index: 12;
+}
+
 .ob-cta-row {
   display: flex;
   flex-wrap: wrap;

@@ -315,6 +315,121 @@ textarea {
   flex: 1;
 }
 
+/* ---------------------------------------------- content type */
+.content-type {
+  position: relative;
+}
+
+button.content-type-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  text-align: left;
+  font-weight: var(--weight-regular);
+  font-size: 16px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--text-body);
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-subtle);
+  background: var(--white);
+  white-space: nowrap;
+}
+
+button.content-type-trigger:hover,
+button.content-type-trigger:focus-visible,
+button.content-type-trigger[aria-expanded="true"] {
+  border-color: var(--violet);
+}
+
+button.content-type-trigger:active:not(:disabled) {
+  transform: none;
+}
+
+.content-type-trigger .placeholder {
+  color: var(--text-muted);
+}
+
+.content-type-chevron {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.content-type-menu {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+button.content-type-option {
+  width: 100%;
+  display: block;
+  text-align: left;
+  font-weight: var(--weight-regular);
+  font-size: 15px;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--text-body);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  white-space: normal;
+}
+
+button.content-type-option:hover,
+button.content-type-option:focus-visible {
+  background: var(--violet-20);
+}
+
+button.content-type-option:active:not(:disabled) {
+  transform: none;
+}
+
+button.content-type-option.else {
+  font-weight: var(--weight-bold);
+  color: var(--violet-on-light);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  margin-top: 4px;
+}
+
+button.content-type-option.current {
+  background: var(--violet-20);
+  font-weight: var(--weight-bold);
+}
+
+button.content-type-option small {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  margin-top: 2px;
+}
+
+.content-type-search {
+  margin-bottom: 6px;
+}
+
+.content-type-empty {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-size: var(--text-small);
+}
+
 /* ---------------------------------------------- painikkeet */
 button {
   font-family: var(--font-family);

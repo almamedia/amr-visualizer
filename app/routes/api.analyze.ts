@@ -1,5 +1,6 @@
 import { scrape } from "@/lib/scrape";
 import { analyzeBrand, extractSignals, hasApiKey } from "@/lib/claude";
+import { resolveContentTypePicks } from "@/lib/content-taxonomy";
 
 import type { Route } from "./+types/api.analyze";
 
@@ -34,16 +35,48 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     const scraped = await scrape(url);
     const [brand, signals] = await Promise.all([
-      analyzeBrand(scraped).catch(() => null),
-      extractSignals(scraped),
+      analyzeBrand(scraped).catch((e) => {
+        console.error("[api/analyze] brand analysis failed", e);
+        return null;
+      }),
+      extractSignals(scraped).catch((e) => {
+        console.error("[api/analyze] signal extraction failed", e);
+        return null;
+      }),
     ]);
 
+    // Prefer the brand-card pick when both calls succeed; snap onto the
+    // official IAB name list either way.
+    const merged = signals
+      ? {
+          ...signals,
+          ...resolveContentTypePicks(
+            brand?.contentType || signals.contentType || signals.industry,
+            brand?.contentTypeAlternatives ??
+              signals.contentTypeAlternatives ??
+              []
+          ),
+        }
+      : signals;
+    if (merged?.contentType) merged.industry = merged.contentType;
+
     return Response.json({
-      signals,
-      brand,
+      signals: merged,
+      brand: brand
+        ? {
+            ...brand,
+            ...(merged
+              ? {
+                  contentType: merged.contentType,
+                  contentTypeAlternatives: merged.contentTypeAlternatives,
+                }
+              : {}),
+          }
+        : null,
       meta: { aiEnabled: hasApiKey(), usedPlaywright: scraped.usedPlaywright },
     });
-  } catch {
+  } catch (e) {
+    console.error("[api/analyze] scrape or analysis failed", e);
     // The site was unreachable or unreadable. The flow continues without it.
     return Response.json({
       signals: null,
