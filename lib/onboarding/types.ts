@@ -39,14 +39,35 @@ export interface TimelineAnswer {
   duration: DurationId;
 }
 
+/** One row from Alma's private audience taxonomy (cohorts.json). */
+export interface Cohort {
+  id: string;
+  /** "Automotive>Car buying intent>High" — Alma's own hierarchy, English, "ALMA - " stripped. */
+  path: string;
+  liveAudienceSize: number;
+}
+
+/** A cohort Claude judged a fit, with the reasoning and channel mapping attached. */
+export interface CohortMatch {
+  cohort: Cohort;
+  /** One sentence, specific to this business — not a restatement of the cohort's name. */
+  whyItFits: string;
+  /** Which of the 5 fixed audience types this cohort counts as, for channel weighting. */
+  typeId: AudienceTypeId;
+}
+
 export interface AudienceAnswer {
   geography: GeographyMode;
   /** Region id when geography is "region". */
   regionId: string;
   /** Free-text city when geography is "city". */
   city: string;
-  /** Max 2 (PRD §7 step 4). */
+  /** Max 2 (PRD §7 step 4). Derived from `cohorts` when cohort matching is active. */
   types: AudienceTypeId[];
+  /** Selected cohorts from Alma's taxonomy, when cohorts.json is available. Max 2, mirrors `types`. */
+  cohorts: CohortMatch[];
+  /** Free text describing the target audience further, used to sharpen cohort matching. */
+  enrichment: string;
 }
 
 export interface BudgetAnswer {
@@ -262,6 +283,8 @@ export interface CreativeBrief {
     specFormatId: string | null;
   }[];
   budgetTier: string;
+  /** Free text the advertiser added about their audience, when they gave any. */
+  audienceNotes?: string;
   /** Carried straight through so the studio need not re-scrape. */
   brand: BrandCard | null;
 }

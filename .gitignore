@@ -7,3 +7,6 @@ build/
 .DS_Store
 /tmp-assets/
 .claude/
+
+# Alma's private cohort taxonomy — never committed. See cohorts.example.json.
+lib/onboarding/data/cohorts.json
