@@ -262,7 +262,7 @@
 .ob-summary {
   font-size: var(--text-lead);
   line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-finnish);
+  letter-spacing: var(--tracking-tight);
   margin: 0;
   color: var(--text-strong);
 }

@@ -1,10 +1,9 @@
 node_modules/
-.next/
-out/
+build/
+.react-router/
 .env.local
 .env*.local
 *.tsbuildinfo
-next-env.d.ts
 .DS_Store
 /tmp-assets/
 .claude/

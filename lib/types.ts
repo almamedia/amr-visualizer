@@ -1,4 +1,4 @@
-export type GoalId = "tunnettuus" | "tarjous" | "rekrytointi";
+export type GoalId = "awareness" | "offer" | "recruitment";
 
 export interface TextLimits {
   headline: number;
@@ -55,15 +55,15 @@ export interface SpecLibrary {
   goals: Goal[];
 }
 
-/** Brändikortti — poimittu sivustolta, käyttäjän muokattavissa ennen generointia. */
+/** Brand card — read off the website, editable before assets are generated. */
 export interface BrandCard {
   sourceUrl: string;
   companyName: string;
-  /** Yrityksen ydinviesti, 1–2 lausetta. */
+  /** What the company does, in one or two sentences. */
   description: string;
-  /** Äänensävy, esim. "Lämmin ja asiantunteva". */
+  /** Tone of voice, e.g. "Warm and expert". */
   tone: string;
-  toimiala: string;
+  industry: string;
   logoUrl: string | null;
   colors: {
     primary: string;
@@ -77,18 +77,18 @@ export interface BrandCard {
     body: string;
   };
   images: BrandImage[];
-  /** true jos Claude-avain puuttui ja tämä on mock-dataa. */
+  /** True when the Claude key was missing and this is mock data. */
   isMock?: boolean;
   warnings?: string[];
 }
 
 export interface BrandImage {
-  /** Verkko-osoite tai data-URI, jos kuva on ladattu käyttäjän koneelta. */
+  /** A URL, or a data URI when the user uploaded the image themselves. */
   url: string;
   alt: string;
-  /** Käyttäjä voi poistaa kuvan käytöstä brändikortissa. */
+  /** The user can drop an image from the brand card. */
   enabled: boolean;
-  /** Käyttäjän itse lataama kuva, ei sivulta poimittu. */
+  /** Uploaded by the user rather than found on the page. */
   uploaded?: boolean;
 }
 
@@ -99,7 +99,7 @@ export interface CopyVariant {
   cta: string;
 }
 
-/** Yksi valmis aineisto. */
+/** One finished ad asset. */
 export interface GeneratedAsset {
   id: string;
   formatId: string;
@@ -107,7 +107,7 @@ export interface GeneratedAsset {
   kind: "static" | "html5";
   width: number;
   height: number;
-  /** data: URI esikatselua varten (PNG) tai HTML-merkkijono html5:lle. */
+  /** A data: URI for preview (PNG), or the markup for html5 assets. */
   dataUri?: string;
   html?: string;
   fileName: string;

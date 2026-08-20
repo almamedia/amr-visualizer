@@ -1,6 +1,6 @@
 /**
- * Aja tehtävät rinnakkain, mutta rajoitetulla määrällä yhtäaikaisia.
- * Playwright-renderöinti on muistisyöppö, joten kaikkia kokoja ei ajeta kerralla.
+ * Run tasks in parallel, but with a cap on how many run at once.
+ * Playwright rendering is memory-hungry, so not every size runs at the same time.
  */
 export async function mapLimit<T, R>(
   items: T[],

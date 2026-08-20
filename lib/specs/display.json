@@ -1,26 +1,30 @@
 {
-  "$comment": "Alma Media display -aineisto-ohjeet. Lähde: https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/ (haettu 2026-08-11). Mitat ja maksimipainot ovat Alman virallisia arvoja. Tekstirajat ovat tämän työkalun template-tason rajoja (luettavuus annetussa koossa), eivät Alman vaatimuksia — Alma määrittelee merkkirajat vain Performance Native -formaatille.",
+  "$comment": "Alma Media display advertising specs. Source: https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/ (fetched 2026-08-11). Dimensions and maximum weights are Alma's official figures. Format names are Alma's own product names and are kept as-is — they are what a media buyer books. Character limits are this tool's template-level limits (legibility at a given size), not Alma requirements: Alma specifies character limits only for Performance Native.",
   "source": {
     "url": "https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/",
     "fetchedAt": "2026-08-11"
   },
   "global": {
-    "aiActLabel": "Sisältö luotu tekoälyllä",
-    "$aiActComment": "Merkintä on pois päältä AMR:n päätöksellä: kuvia ei muokata vaan ainoastaan rajataan, ja tekstit käyvät läpi ihmisen tarkistuksen ennen latausta. Huomaa että mainosten otsikot, leipätekstit ja CTA:t ovat mallin kirjoittamia — jos linjaus muuttuu, riittää että tämä arvo asetetaan takaisin arvoon true, jolloin merkintä palaa sekä aineistoihin että validointiin.",
+    "aiActLabel": "Created with AI",
+    "$aiActComment": "Turned off by an AMR decision: images are cropped rather than altered, and every line of copy is reviewed by a person before download. Note that ad headlines, body copy and CTAs are written by the model — if that decision changes, setting this back to true restores the label in both the rendered assets and the validation. If the label is turned on for ads running in Finnish media, translate aiActLabel as well: the disclosure has to read in the language of the ad.",
     "requireAiActLabel": false,
     "httpsRequired": true,
-    "acceptedStaticFormats": ["jpg", "png", "gif"],
+    "acceptedStaticFormats": [
+      "jpg",
+      "png",
+      "gif"
+    ],
     "html5": {
       "maxInitialLoadKb": 300,
       "maxCpuLoadPercent": 20,
       "politeLoadAllowed": true,
       "notes": [
-        "Kaikki ulkoiset resurssit HTTPS:n yli.",
-        "Kursori muuttuu klikattavilla alueilla.",
-        "Linkit avautuvat uuteen välilehteen.",
-        "Alkulataus pysyy tiedostokokorajassa; polite load sallittu window.onload jälkeen.",
-        "Vältä jQueryä tiedostopainon vuoksi.",
-        "Google Web Designer: valitse Non-Google Ad -asetus."
+        "All external resources must load over HTTPS.",
+        "The cursor must change over clickable areas.",
+        "Links open in a new tab.",
+        "Initial load stays within the file size limit; polite load is allowed after window.onload.",
+        "Avoid jQuery because of its file weight.",
+        "Google Web Designer: choose the Non-Google Ad setting."
       ]
     }
   },
@@ -31,7 +35,14 @@
       "width": 980,
       "height": 400,
       "maxFileSizeKb": 300,
-      "acceptedTypes": ["jpg", "png", "gif", "html5", "video", "3rd-party-tag"],
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "video",
+        "3rd-party-tag"
+      ],
       "device": "desktop",
       "primary": true,
       "textLimits": {
@@ -46,10 +57,17 @@
       "width": 300,
       "height": 600,
       "maxFileSizeKb": 300,
-      "acceptedTypes": ["jpg", "png", "gif", "html5", "video", "3rd-party-tag"],
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "video",
+        "3rd-party-tag"
+      ],
       "device": "desktop",
       "primary": true,
-      "$comment": "Suomen yhdyssanat ovat pitkiä. 300 px leveydellä otsikko taittuu kolmelle riville noin 55 merkkiin asti, ja 600 px korkeudessa siihen on runsaasti tilaa.",
+      "$comment": "Long compound words are common in this market. At 300 px wide the headline wraps to three lines at around 55 characters, and 600 px of height leaves plenty of room for it.",
       "textLimits": {
         "headline": 55,
         "body": 105,
@@ -62,13 +80,19 @@
       "width": 600,
       "height": 600,
       "maxFileSizeKb": 300,
-      "acceptedTypes": ["jpg", "png", "gif", "html5", "3rd-party-tag"],
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "3rd-party-tag"
+      ],
       "device": "both",
       "primary": true,
       "requirements": [
-        "Koko pinta klikattava",
-        "Selkeä brändäys",
-        "Toimintaan ohjaava CTA-teksti"
+        "The whole surface is clickable",
+        "Clear branding",
+        "A CTA that drives action"
       ],
       "textLimits": {
         "headline": 50,
@@ -82,7 +106,13 @@
       "width": 300,
       "height": 431,
       "maxFileSizeKb": 300,
-      "acceptedTypes": ["jpg", "png", "gif", "html5", "3rd-party-tag"],
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "3rd-party-tag"
+      ],
       "device": "mobile",
       "primary": false,
       "textLimits": {
@@ -97,10 +127,20 @@
       "width": 600,
       "height": 500,
       "maxFileSizeKb": 300,
-      "acceptedTypes": ["jpg", "png", "gif", "html5", "video", "3rd-party-tag"],
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "video",
+        "3rd-party-tag"
+      ],
       "device": "desktop",
       "primary": false,
-      "mobileAlternative": { "width": 600, "height": 600 },
+      "mobileAlternative": {
+        "width": 600,
+        "height": 600
+      },
       "textLimits": {
         "headline": 50,
         "body": 105,
@@ -113,7 +153,14 @@
       "width": 980,
       "height": 552,
       "maxFileSizeKb": 300,
-      "acceptedTypes": ["jpg", "png", "gif", "html5", "video", "3rd-party-tag"],
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "video",
+        "3rd-party-tag"
+      ],
       "device": "desktop",
       "primary": false,
       "textLimits": {
@@ -128,7 +175,13 @@
       "width": 1600,
       "height": 1200,
       "maxFileSizeKb": 400,
-      "acceptedTypes": ["jpg", "png", "gif", "html5", "3rd-party-tag"],
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "3rd-party-tag"
+      ],
       "device": "desktop",
       "primary": false,
       "textLimits": {
@@ -142,14 +195,14 @@
     {
       "id": "paraati-html5",
       "baseFormat": "paraati",
-      "name": "Paraati HTML5 (animoitu)",
+      "name": "Paraati HTML5 (animated)",
       "maxFileSizeKb": 300,
       "maxAnimationSeconds": 15
     },
     {
       "id": "performance-display-html5",
       "baseFormat": "performance-display",
-      "name": "Performance Display HTML5 (animoitu)",
+      "name": "Performance Display HTML5 (animated)",
       "maxFileSizeKb": 300,
       "maxAnimationSeconds": 15
     }
@@ -161,37 +214,50 @@
     "height": 400,
     "maxFileSizeMb": 10,
     "maxDurationSeconds": 15,
-    "acceptedTypes": ["mp4"],
+    "acceptedTypes": [
+      "mp4"
+    ],
     "outstream": {
-      "$comment": "Outstream-kampanjavideo, jos halutaan 16:9 / 1:1 / 9:16",
+      "$comment": "Outstream campaign video, when 16:9 / 1:1 / 9:16 is wanted",
       "maxFileSizeMb": 4,
       "maxDurationSeconds": 30,
       "codec": "H.264",
-      "videoBitrateKbps": { "min": 750, "max": 8000 },
+      "videoBitrateKbps": {
+        "min": 750,
+        "max": 8000
+      },
       "audioBitrateKbps": 384,
-      "frameRates": [24, 25, 30],
+      "frameRates": [
+        24,
+        25,
+        30
+      ],
       "loudnessLufs": -23,
-      "aspectRatios": ["16:9", "1:1", "9:16"]
+      "aspectRatios": [
+        "16:9",
+        "1:1",
+        "9:16"
+      ]
     }
   },
   "goals": [
     {
-      "id": "tunnettuus",
-      "name": "Tunnettuus",
-      "description": "Kerro kuka olet ja miksi sinut kannattaa muistaa",
-      "ctaHint": "Pehmeä, tutustumaan kutsuva CTA"
+      "id": "awareness",
+      "name": "Awareness",
+      "description": "Say who you are and why you are worth remembering",
+      "ctaHint": "A soft CTA that invites a look"
     },
     {
-      "id": "tarjous",
-      "name": "Tarjous",
-      "description": "Nosta konkreettinen etu tai tarjous esiin",
-      "ctaHint": "Suora, toimintaan ohjaava CTA"
+      "id": "offer",
+      "name": "Offer",
+      "description": "Put a concrete benefit or offer front and centre",
+      "ctaHint": "A direct CTA that drives action"
     },
     {
-      "id": "rekrytointi",
-      "name": "Rekrytointi",
-      "description": "Houkuttele hakijoita töihin",
-      "ctaHint": "Hakemiseen ohjaava CTA"
+      "id": "recruitment",
+      "name": "Recruitment",
+      "description": "Attract people to apply for a job",
+      "ctaHint": "A CTA that leads to the application"
     }
   ]
 }

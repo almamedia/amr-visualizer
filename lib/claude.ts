@@ -6,8 +6,8 @@ import type { BusinessSignals } from "./onboarding/types";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
-/** Kuinka monta kuvaehdokasta näytetään mallille. Jokainen kuva maksaa
- *  tokeneita, joten katselmoidaan kärki eikä koko sivun kuvastoa. */
+/** How many image candidates the model is shown. Every image costs tokens,
+ *  so it reviews the top of the list rather than the whole page. */
 const MAX_VISION_IMAGES = 6;
 
 export function hasApiKey(): boolean {
@@ -23,8 +23,8 @@ function model(): string {
 }
 
 /**
- * Kutsu Claudea ja palauta jäsennelty JSON. Jos malli ei tue effort-parametria,
- * yritetään uudelleen ilman sitä, jotta mallin voi vaihtaa vapaasti.
+ * Call Claude and return parsed JSON. If the model does not support the effort
+ * parameter, retry without it so the model stays freely swappable.
  */
 type UserContent = string | Anthropic.ContentBlockParam[];
 
@@ -51,7 +51,7 @@ async function askJson<T>(
     text = firstText(res);
   } catch (e) {
     if (!isBadRequest(e)) throw e;
-    // Malli ei tue effortia — aja ilman.
+    // The model does not support effort — run without it.
     const res = await c.messages.create(base);
     text = firstText(res);
   }
@@ -72,10 +72,10 @@ function firstText(res: Anthropic.Message): string {
   for (const block of res.content) {
     if (block.type === "text") return block.text;
   }
-  throw new Error("Claude ei palauttanut tekstisisältöä.");
+  throw new Error("Claude returned no text content.");
 }
 
-/** Kestävä JSON-jäsennys: sietää koodiaidat ja selittävän tekstin ympärillä. */
+/** Tolerant JSON parsing: survives code fences and prose around the object. */
 function parseJson<T>(raw: string): T {
   let s = raw.trim();
 
@@ -85,11 +85,11 @@ function parseJson<T>(raw: string): T {
   try {
     return JSON.parse(s) as T;
   } catch {
-    // Etsi ensimmäinen tasapainoinen objekti tai taulukko.
+    // Find the first balanced object or array.
   }
 
   const start = s.search(/[[{]/);
-  if (start === -1) throw new Error("Claude ei palauttanut JSONia.");
+  if (start === -1) throw new Error("Claude returned no JSON.");
   const open = s[start];
   const close = open === "{" ? "}" : "]";
   let depth = 0;
@@ -113,50 +113,51 @@ function parseJson<T>(raw: string): T {
       }
     }
   }
-  throw new Error("Claude palautti vaillinaisen JSONin.");
+  throw new Error("Claude returned incomplete JSON.");
 }
 
-// ---------------------------------------------------------------- brändi
+// ----------------------------------------------------------------- brand
 
-const BRAND_SYSTEM = `Olet brändianalyytikko, joka tiivistää suomalaisen pk-yrityksen verkkosivun mainoskäyttöön sopivaksi brändikortiksi.
+const BRAND_SYSTEM = `You are a brand analyst. You read a small business's website and condense it into a brand card an ad can be built from.
 
-Vastaa VAIN JSONilla, ilman selityksiä tai koodiaitoja. Käytä täsmälleen tätä rakennetta:
+Reply with JSON ONLY, no explanation and no code fences. Use exactly this shape:
 {
   "companyName": string,
   "description": string,
   "tone": string,
-  "toimiala": string,
+  "industry": string,
   "logoUrl": string | null,
   "colors": { "primary": "#rrggbb", "secondary": "#rrggbb", "accent": "#rrggbb", "background": "#rrggbb", "text": "#rrggbb" },
   "fonts": { "heading": string, "body": string },
   "imageUrls": string[]
 }
 
-Ohjeet:
-- companyName: yrityksen nimi sellaisena kuin se esiintyy sivulla. Ei slogania, ei domainia.
-- description: 1–2 lausetta suomeksi siitä, mitä yritys tekee ja kenelle. Konkreettinen, ei markkinointikliseitä.
-- tone: äänensävy 2–4 sanalla, esim. "Lämmin ja asiantunteva".
-- toimiala: yksi tai kaksi sanaa, esim. "Parturi-kampaamo".
-- logoUrl: valitse ehdokkaista todennäköisin logo, tai null jos yksikään ei vakuuta. Suosi kuvaa, jonka polussa tai altissa lukee logo, ennen faviconia. Mainos rakentuu vaalealle pohjalle, joten vältä negaversioita: jos tiedostonimessä on white, valko, nega, invert tai light, valitse jokin muu ehdokas silloin kun sellainen on tarjolla.
-- colors: valitse väriehdokkaista aidot brändivärit. primary on tunnistettavin brändiväri. background on vaalea tai tumma pohja, jolle mainos rakentuu. text erottuu backgroundista selvästi (kontrasti vähintään 4.5:1). accent käytetään CTA-napissa, ja sen on erotuttava backgroundista. Jos ehdokkaista ei löydy järkevää väriä, valitse toimialaan sopiva neutraali väri.
-- fonts: valitse fonttiehdokkaista. Jos ei löydy, ehdota toimialaan sopivat.
-- imageUrls: valitse 2–4 mainoskäyttöön sopivaa kuvaa. Kuvat on liitetty mukaan, joten katso ne. Palauta URLit täsmälleen sellaisina kuin ne annettiin, ja käytä numerointia kuvien tunnistamiseen.
+Instructions:
+- Write every string in English, even when the site is in another language.
+- companyName: the company's name as it appears on the page. Not the slogan, not the domain.
+- description: one or two sentences on what the company does and who for. Concrete, no marketing cliché.
+- tone: tone of voice in two to four words, e.g. "Warm and expert".
+- industry: one or two words, e.g. "Hair salon".
+- logoUrl: pick the likeliest logo from the candidates, or null if none convinces. Prefer an image whose path or alt text says logo over a favicon. The ad is built on a light ground, so avoid reversed-out versions: if the filename contains white, nega, invert or light, choose another candidate when one is available.
+- colors: pick the real brand colours from the candidates. primary is the most recognisable brand colour. background is the light or dark ground the ad is built on. text stands clearly apart from background (contrast at least 4.5:1). accent is used on the CTA button and must stand apart from background. If no sensible colour is among the candidates, choose a neutral that suits the industry.
+- fonts: pick from the font candidates. If none fit, suggest fonts that suit the industry.
+- imageUrls: pick two to four images suitable for advertising. The images are attached, so look at them. Return the URLs exactly as given, and use the numbering to identify them.
 
-  Hylkää ehdottomasti kuva, jossa on:
-  - tekstiä, otsikoita, iskulauseita tai verkko-osoitteita kuvan päällä
-  - CTA-painike tai muu toimintakehotus
-  - logo hallitsevana elementtinä
-  Tällainen kuva on jo valmis mainos. Sitä ei voi käyttää uuden mainoksen kuvana: siinä on oma otsikkonsa ja oma toimintakehotuksensa, jotka kilpailevat uuden mainoksen kanssa, ja rajaus katkaisee tekstin kesken.
+  Always reject an image that has:
+  - text, headlines, slogans or web addresses over it
+  - a CTA button or any other call to action
+  - a logo as the dominant element
+  An image like that is already an ad. It cannot be the image inside a new ad: it carries its own headline and its own call to action, both competing with the new ad, and cropping cuts its text mid-word.
 
-  Hylkää myös kollaasit, ruutukaappaukset, kaaviot, taulukot ja tyhjät kuvituskuviot.
+  Also reject collages, screenshots, charts, tables and empty decorative patterns.
 
-  Valitse valokuvia: ihmisiä, tuotteita, tiloja tai työn tekemistä. Jos yksikään kuva ei kelpaa, palauta tyhjä lista — mainos rakentuu silloin typografialla ja väreillä, mikä on parempi kuin huono kuva.`;
+  Choose photographs: people, products, spaces, or work being done. If no image is usable, return an empty list — an ad built from type and colour beats an ad built on the wrong photo.`;
 
 interface BrandResponse {
   companyName: string;
   description: string;
   tone: string;
-  toimiala: string;
+  industry: string;
   logoUrl: string | null;
   colors: BrandCard["colors"];
   fonts: BrandCard["fonts"];
@@ -166,7 +167,7 @@ interface BrandResponse {
 export async function analyzeBrand(s: ScrapeResult): Promise<BrandCard> {
   if (!hasApiKey()) return mockBrand(s);
 
-  const user = `Verkkosivu: ${s.finalUrl}
+  const user = `Website: ${s.finalUrl}
 
 <title>${s.title}</title>
 <og:site_name>${s.ogSiteName}</og:site_name>
@@ -174,39 +175,39 @@ export async function analyzeBrand(s: ScrapeResult): Promise<BrandCard> {
 <meta-description>${s.metaDescription}</meta-description>
 <og:description>${s.ogDescription}</og:description>
 
-<logo-ehdokkaat>
-${s.logoCandidates.map((u, i) => `${i + 1}. ${u}`).join("\n") || "(ei löytynyt)"}
-</logo-ehdokkaat>
+<logo-candidates>
+${s.logoCandidates.map((u, i) => `${i + 1}. ${u}`).join("\n") || "(none found)"}
+</logo-candidates>
 
-<kuva-ehdokkaat>
+<image-candidates>
 ${
   s.imageCandidates
     .map((im, i) => `${i + 1}. ${im.url}${im.alt ? ` — alt: ${im.alt}` : ""}`)
-    .join("\n") || "(ei löytynyt)"
+    .join("\n") || "(none found)"
 }
-</kuva-ehdokkaat>
+</image-candidates>
 
-<vari-ehdokkaat esiintymismaaran-mukaan>
+<colour-candidates by-frequency>
 ${
   s.colorCandidates.map((c) => `${c.color} (${c.count})`).join(", ") ||
-  "(ei löytynyt)"
+  "(none found)"
 }
-</vari-ehdokkaat>
+</colour-candidates>
 
-<fontti-ehdokkaat>
-${s.fontCandidates.join(", ") || "(ei löytynyt)"}
-</fontti-ehdokkaat>
+<font-candidates>
+${s.fontCandidates.join(", ") || "(none found)"}
+</font-candidates>
 
-<sivun-teksti>
+<page-text>
 ${s.text.slice(0, 5000)}
-</sivun-teksti>`;
+</page-text>`;
 
-  // Liitä kuvaehdokkaat mukaan kuvina, jotta malli näkee ne. Pelkän
-  // URLin ja alt-tekstin perusteella valmis mainos menee helposti läpi.
+  // Attach the image candidates as images so the model can see them. Judged
+  // on URL and alt text alone, a finished ad slips through easily.
   const visionContent: Anthropic.ContentBlockParam[] = [];
   const shown = s.imageCandidates.slice(0, MAX_VISION_IMAGES);
   for (const [i, img] of shown.entries()) {
-    visionContent.push({ type: "text", text: `Kuva ${i + 1}: ${img.url}` });
+    visionContent.push({ type: "text", text: `Image ${i + 1}: ${img.url}` });
     visionContent.push({
       type: "image",
       source: { type: "url", url: img.url },
@@ -224,8 +225,8 @@ ${s.text.slice(0, 5000)}
         "low"
       );
     } catch (visionError) {
-      // Kuvat voivat olla mallin ulottumattomissa (kirjautumisen takana,
-      // liian isoja, tuntematon muoto). Aja tekstipohjainen analyysi.
+      // The images may be out of the model's reach: behind a login, too
+      // large, an unknown format. Fall back to the text-only analysis.
       if (!shown.length) throw visionError;
       r = await askJson<BrandResponse>(BRAND_SYSTEM, user, 2000, "low");
     }
@@ -240,17 +241,17 @@ ${s.text.slice(0, 5000)}
       sourceUrl: s.finalUrl,
       companyName: clean(r.companyName) || fallbackName(s),
       description: clean(r.description) || s.metaDescription || "",
-      tone: clean(r.tone) || "Selkeä ja asiallinen",
-      toimiala: clean(r.toimiala) || "",
+      tone: clean(r.tone) || "Clear and straightforward",
+      industry: clean(r.industry) || "",
       logoUrl: r.logoUrl && r.logoUrl.startsWith("http") ? r.logoUrl : null,
       colors: sanitizeColors(r.colors, s),
       fonts: {
         heading: clean(r.fonts?.heading) || "Helvetica Neue",
         body: clean(r.fonts?.body) || "Helvetica Neue",
       },
-      // Tyhjä lista on mallin tietoinen valinta, kun yksikään kuva ei kelpaa
-      // (valmiita mainoksia, ruutukaappauksia). Sitä ei ohiteta raakalistalla
-      // — typografialla rakennettu mainos on parempi kuin väärä kuva.
+      // An empty list is the model's deliberate choice when no image is
+      // usable (finished ads, screenshots). It is not overridden with the raw
+      // list — an ad built from type beats an ad built on the wrong photo.
       images,
       warnings: s.warnings,
     };
@@ -258,9 +259,9 @@ ${s.text.slice(0, 5000)}
     const brand = mockBrand(s);
     brand.warnings = [
       ...(brand.warnings ?? []),
-      `Claude-analyysi epäonnistui (${
-        e instanceof Error ? e.message : "tuntematon virhe"
-      }). Käytössä on sivulta poimittu arvio.`,
+      `Claude analysis failed (${
+        e instanceof Error ? e.message : "unknown error"
+      }). Using the estimate read straight off the page.`,
     ];
     return brand;
   }
@@ -275,14 +276,14 @@ function fallbackName(s: ScrapeResult): string {
   const t = s.ogTitle || s.title;
   if (t) return t.split(/[|–—-]/)[0].trim().slice(0, 60);
   try {
-    // Verkkotunnuksesta nimeksi: www ja päätteet pois, alkukirjain isoksi.
+    // Domain to name: strip www and the TLD, capitalise the first letter.
     const host = new URL(s.finalUrl).hostname
       .replace(/^www\./, "")
       .replace(/\.(fi|com|net|org|eu|se|io|co\.uk)$/i, "")
       .split(".")[0];
-    return host ? host.charAt(0).toUpperCase() + host.slice(1) : "Yritys";
+    return host ? host.charAt(0).toUpperCase() + host.slice(1) : "The company";
   } catch {
-    return "Yritys";
+    return "The company";
   }
 }
 
@@ -305,7 +306,7 @@ function sanitizeColors(
   };
 }
 
-// ------------------------------------------------- heuristinen varapaletti
+// ----------------------------------------------- heuristic fallback palette
 
 function rgb(hex: string): [number, number, number] {
   const s = hex.replace("#", "");
@@ -331,11 +332,11 @@ function sat(hex: string): number {
   return max === 0 ? 0 : (max - min) / max;
 }
 
-/** Arvaa paletti pelkistä väriehdokkaista, kun Claudea ei ole käytettävissä. */
+/** Guess a palette from the colour candidates alone, when Claude is absent. */
 function guessPalette(s: ScrapeResult): BrandCard["colors"] {
   const cands = s.colorCandidates.map((c) => c.color).filter((c) => HEX.test(c));
 
-  // Brändiväri: kylläisin, ei liian vaalea eikä liian tumma, painotettuna yleisyydellä.
+  // Brand colour: the most saturated, neither too light nor too dark, weighted by frequency.
   const scored = cands
     .map((c, i) => ({
       c,
@@ -364,8 +365,8 @@ function guessPalette(s: ScrapeResult): BrandCard["colors"] {
 }
 
 function mockBrand(s: ScrapeResult): BrandCard {
-  // Puuttuvasta API-avaimesta ei varoiteta täällä — käyttöliittymä näyttää
-  // siitä oman pysyvän huomautuksensa, eikä sitä kannata kertoa kahdesti.
+  // A missing API key is not warned about here — the UI shows its own
+  // standing notice, and saying it twice helps nobody.
   const warnings = [...s.warnings];
   return {
     sourceUrl: s.finalUrl,
@@ -374,9 +375,9 @@ function mockBrand(s: ScrapeResult): BrandCard {
       s.metaDescription ||
       s.ogDescription ||
       s.text.slice(0, 180).trim() ||
-      "Kuvaus puuttuu — täydennä käsin.",
-    tone: "Selkeä ja asiallinen",
-    toimiala: "",
+      "Description missing — fill this in by hand.",
+    tone: "Clear and straightforward",
+    industry: "",
     logoUrl: s.logoCandidates[0] ?? null,
     colors: guessPalette(s),
     fonts: {
@@ -391,20 +392,30 @@ function mockBrand(s: ScrapeResult): BrandCard {
 
 // ------------------------------------------------------------------ copy
 
-const COPY_SYSTEM = `Olet suomalainen mainostoimittaja. Kirjoitat display-mainosten tekstit pk-yrityksille.
+/**
+ * The language the ads themselves are written in.
+ *
+ * This is a product decision, not a translation detail. The tool is English,
+ * but the ads it makes run in Alma's titles, which are read in Finnish. Change
+ * this one constant to put the creative back into Finnish; the prompt, the mock
+ * copy fallback and the character-set check all follow it.
+ */
+export const COPY_LANGUAGE = "English";
 
-Vastaa VAIN JSONilla, ilman selityksiä tai koodiaitoja:
+const COPY_SYSTEM = `You are an advertising copywriter. You write the text inside display ads for small and medium-sized businesses.
+
+Reply with JSON ONLY, no explanation and no code fences:
 { "variants": [ { "headline": string, "body": string, "cta": string }, ... ] }
 
-Kirjoita täsmälleen 3 variaatiota, jotka eroavat toisistaan kulmaltaan — älä kirjoita samaa asiaa kolmella tavalla.
+Write exactly 3 variants that differ in angle — do not write the same thing three ways.
 
-Ohjeet:
-- Kirjoita moitteetonta suomea. Yhdyssanat oikein, ei anglismeja, ei turhia isoja alkukirjaimia.
-- Otsikko myy hyödyn, ei ominaisuutta. Ei huutomerkkejä, ei kaikkia versaaleja.
-- Leipäteksti tukee otsikkoa yhdellä konkreettisella asialla.
-- CTA on lyhyt toimintakehotus, esim. "Varaa aika" tai "Katso valikoima". Ei pistettä lopussa.
-- Älä keksi hintoja, lukuja, takuita tai väitteitä, joita lähdemateriaalissa ei ole.
-- Pysy merkkirajoissa. Ne ovat ehdottomia.`;
+Instructions:
+- Write in ${COPY_LANGUAGE}. Clean, idiomatic, correctly spelled.
+- The headline sells the benefit, not the feature. No exclamation marks, no all caps.
+- The body supports the headline with one concrete thing.
+- The CTA is a short call to action, e.g. "Book a time" or "See the range". No full stop.
+- Never invent prices, figures, guarantees or claims that are not in the source material.
+- Stay inside the character limits. They are absolute.`;
 
 interface CopyResponse {
   variants: { headline: string; body: string; cta: string }[];
@@ -418,20 +429,20 @@ export async function generateCopy(
   if (!hasApiKey()) return mockCopy(brand, goalId, limits);
 
   const goal = getGoal(goalId);
-  const user = `Yritys: ${brand.companyName}
-Toimiala: ${brand.toimiala || "ei tiedossa"}
-Mitä yritys tekee: ${brand.description}
-Äänensävy: ${brand.tone}
+  const user = `Company: ${brand.companyName}
+Industry: ${brand.industry || "not known"}
+What the company does: ${brand.description}
+Tone of voice: ${brand.tone}
 
-Kampanjatavoite: ${goal.name} — ${goal.description}
-CTA-tyyli: ${goal.ctaHint}
+Campaign goal: ${goal.name} — ${goal.description}
+CTA style: ${goal.ctaHint}
 
-Merkkirajat (ehdottomat):
-- headline: enintään ${limits.headline} merkkiä
-- body: enintään ${limits.body} merkkiä
-- cta: enintään ${limits.cta} merkkiä
+Character limits (absolute):
+- headline: at most ${limits.headline} characters
+- body: at most ${limits.body} characters
+- cta: at most ${limits.cta} characters
 
-Kirjoita 3 variaatiota.`;
+Write 3 variants.`;
 
   const askVariants = async (): Promise<CopyVariant[]> => {
     const r = await askJson<CopyResponse>(COPY_SYSTEM, user, 1500, "medium");
@@ -441,16 +452,16 @@ Kirjoita 3 variaatiota.`;
         id: `v${i + 1}`,
         headline: clean(v.headline),
         body: clean(v.body),
-        cta: clean(v.cta) || "Lue lisää",
+        cta: clean(v.cta) || "Read more",
       }));
   };
 
   try {
     let usable = (await askVariants()).filter(isLatinOnly);
 
-    // Malli sekoittaa satunnaisesti kyrillisiä homoglyyfejä latinalaisten
-    // sekaan ("lempipiццasi"). Ne näyttävät oikealta vilkaisulla mutta ovat
-    // rikkinäistä suomea valmiissa mainoksessa, joten pyydetään uudet.
+    // The model occasionally mixes Cyrillic homoglyphs in among the Latin
+    // ones ("your favourite piцца"). They look right at a glance but are
+    // broken text in a finished ad, so ask again.
     if (usable.length < 3) {
       const retry = (await askVariants()).filter(isLatinOnly);
       usable = [...usable, ...retry];
@@ -465,8 +476,8 @@ Kirjoita 3 variaatiota.`;
   }
 }
 
-/** Kyrilliset ja kreikkalaiset merkit suomenkielisessä mainostekstissä ovat
- *  aina mallin lipsahdus, eivät tarkoituksellisia. */
+/** Cyrillic and Greek characters in Latin-script ad copy are always a slip by
+ *  the model, never deliberate. */
 const NON_LATIN = /[Ѐ-ӿͰ-Ͽ]/;
 
 export function isLatinOnly(v: CopyVariant): boolean {
@@ -479,67 +490,67 @@ function mockCopy(
   limits: TextLimits
 ): CopyVariant[] {
   const name = brand.companyName;
-  const ala = brand.toimiala || "palvelumme";
+  const trade = brand.industry || "what we do";
 
   const byGoal: Record<GoalId, CopyVariant[]> = {
-    tunnettuus: [
+    awareness: [
       {
         id: "v1",
-        headline: `${name} — lähelläsi`,
-        body: `Tutustu siihen, mitä teemme ja miksi asiakkaamme palaavat.`,
-        cta: "Tutustu meihin",
+        headline: `${name} — close to you`,
+        body: `See what we do, and why our customers keep coming back.`,
+        cta: "Get to know us",
       },
       {
         id: "v2",
-        headline: `Tunnetko jo ${name}?`,
-        body: `${ala} ammattitaidolla ja ilman kiirettä.`,
-        cta: "Katso lisää",
+        headline: `Do you know ${name} yet?`,
+        body: `${trade}, done properly and without the rush.`,
+        cta: "See more",
       },
       {
         id: "v3",
-        headline: `Tässä olemme`,
-        body: `${name} palvelee arkena ja viikonloppuisin.`,
-        cta: "Käy sivuillamme",
+        headline: `Here we are`,
+        body: `${name} is open on weekdays and at weekends.`,
+        cta: "Visit our site",
       },
     ],
-    tarjous: [
+    offer: [
       {
         id: "v1",
-        headline: `Nyt kannattaa tulla käymään`,
-        body: `${name} tarjoaa etua uusille asiakkaille. Kysy lisää.`,
-        cta: "Katso tarjous",
+        headline: `Now is a good time to drop in`,
+        body: `${name} has something for new customers. Ask us more.`,
+        cta: "See the offer",
       },
       {
         id: "v2",
-        headline: `Etu voimassa rajoitetun ajan`,
-        body: `Varaa paikkasi ennen kuin tarjous päättyy.`,
-        cta: "Varaa nyt",
+        headline: `Available for a limited time`,
+        body: `Book your place before the offer ends.`,
+        cta: "Book now",
       },
       {
         id: "v3",
-        headline: `Säästä ensimmäisellä käynnillä`,
-        body: `Mainitse mainos, niin hoidamme loput.`,
-        cta: "Lunasta etu",
+        headline: `Save on your first visit`,
+        body: `Mention this ad and we'll take care of the rest.`,
+        cta: "Claim the offer",
       },
     ],
-    rekrytointi: [
+    recruitment: [
       {
         id: "v1",
-        headline: `Tule töihin meille`,
-        body: `${name} etsii tekijää joukkoonsa. Katso avoimet paikat.`,
-        cta: "Hae paikkaa",
+        headline: `Come and work with us`,
+        body: `${name} is looking for someone to join the team. See the openings.`,
+        cta: "Apply now",
       },
       {
         id: "v2",
-        headline: `Etsimme uutta osaajaa`,
-        body: `Hyvä porukka, selkeät työvuorot ja reilu palkka.`,
-        cta: "Lue lisää",
+        headline: `We're looking for someone new`,
+        body: `Good people, clear shifts and fair pay.`,
+        cta: "Read more",
       },
       {
         id: "v3",
-        headline: `Olisitko sinä seuraava?`,
-        body: `Kerro itsestäsi, niin jutellaan lisää.`,
-        cta: "Ota yhteyttä",
+        headline: `Could you be next?`,
+        body: `Tell us about yourself and let's talk.`,
+        cta: "Get in touch",
       },
     ],
   };

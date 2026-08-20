@@ -23,9 +23,9 @@ interface StaticInput {
   fileSizeBytes: number;
   fileType: string;
   copy: CopyVariant;
-  /** Näkyykö AI Act -merkintä renderöidyssä aineistossa. */
+  /** Whether the AI Act label is visible in the rendered asset. */
   hasAiActLabel: boolean;
-  /** Aineiston todelliset värit kontrastitarkistusta varten. */
+  /** The asset's actual colours, for the contrast check. */
   contrast?: ContrastInput;
 }
 
@@ -36,11 +36,11 @@ export interface ContrastInput {
   ctaText: string;
 }
 
-/** WCAG AA pienelle tekstille. Bannerin otsikko on isoa, mutta leipäteksti
- *  ei ole, ja sama raja pitää mainoksen luettavana myös pienessä koossa. */
+/** WCAG AA for small text. A banner headline is large but the body copy is
+ *  not, and the same floor keeps the ad readable at small sizes too. */
 const MIN_TEXT_CONTRAST = 4.5;
-/** Painike saa erottua pohjasta pienemmällä erolla kuin teksti, mutta
- *  sen pitää erottua — muuten CTA sulautuu pintaan. */
+/** The button may separate from the ground by less than text does, but it
+ *  must separate — otherwise the CTA melts into the surface. */
 const MIN_CTA_SEPARATION = 1.8;
 
 function ratio(a: string, b: string): number {
@@ -59,7 +59,7 @@ function rel(hex: string): number {
   return 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4);
 }
 
-/** Bannerimainonnan perusvaatimus: teksti on luettava ja CTA erottuu. */
+/** The baseline for banner advertising: the text reads and the CTA stands out. */
 function contrastChecks(c: ContrastInput): ValidationCheck[] {
   const textRatio = ratio(c.text, c.ground);
   const ctaRatio = ratio(c.ctaBg, c.ground);
@@ -68,15 +68,15 @@ function contrastChecks(c: ContrastInput): ValidationCheck[] {
   return [
     check(
       "contrast-text",
-      "Tekstin kontrasti",
+      "Text contrast",
       textRatio >= MIN_TEXT_CONTRAST,
-      `${textRatio.toFixed(1)}:1 (vaadittu ${MIN_TEXT_CONTRAST}:1)`
+      `${textRatio.toFixed(1)}:1 (required ${MIN_TEXT_CONTRAST}:1)`
     ),
     check(
       "contrast-cta",
-      "CTA erottuu pohjasta",
+      "CTA stands out from the ground",
       ctaRatio >= MIN_CTA_SEPARATION && ctaTextRatio >= MIN_TEXT_CONTRAST,
-      `nappi ${ctaRatio.toFixed(1)}:1 · teksti napissa ${ctaTextRatio.toFixed(
+      `button ${ctaRatio.toFixed(1)}:1 · text on button ${ctaTextRatio.toFixed(
         1
       )}:1`
     ),
@@ -84,8 +84,8 @@ function contrastChecks(c: ContrastInput): ValidationCheck[] {
 }
 
 /**
- * Validoi staattisen display-aineiston speksikirjastoa vasten.
- * Puhdasta Node-koodia — ei AI:ta, ei verkkokutsuja.
+ * Validate a static display asset against the spec library.
+ * Plain Node code — no AI, no network calls.
  */
 export function validateStatic(input: StaticInput): ValidationResult {
   const fmt = getFormat(input.formatId);
@@ -94,9 +94,9 @@ export function validateStatic(input: StaticInput): ValidationResult {
   checks.push(
     check(
       "dimensions",
-      "Mitat",
+      "Dimensions",
       input.width === fmt.width && input.height === fmt.height,
-      `${input.width}×${input.height} px (vaadittu ${fmt.width}×${fmt.height})`
+      `${input.width}×${input.height} px (required ${fmt.width}×${fmt.height})`
     )
   );
 
@@ -104,18 +104,18 @@ export function validateStatic(input: StaticInput): ValidationResult {
   checks.push(
     check(
       "filesize",
-      "Tiedostokoko",
+      "File size",
       input.fileSizeBytes <= maxBytes,
-      `${Math.round(input.fileSizeBytes / KB)} kt / max ${fmt.maxFileSizeKb} kt`
+      `${Math.round(input.fileSizeBytes / KB)} kB / max ${fmt.maxFileSizeKb} kB`
     )
   );
 
   checks.push(
     check(
       "filetype",
-      "Tiedostomuoto",
+      "File type",
       fmt.acceptedTypes.includes(input.fileType),
-      `${input.fileType.toUpperCase()} (sallitut: ${fmt.acceptedTypes
+      `${input.fileType.toUpperCase()} (allowed: ${fmt.acceptedTypes
         .filter((t) => specs.global.acceptedStaticFormats.includes(t))
         .join(", ")
         .toUpperCase()})`
@@ -129,7 +129,7 @@ export function validateStatic(input: StaticInput): ValidationResult {
     checks.push(
       check(
         "aiact",
-        "AI Act -merkintä",
+        "AI Act label",
         input.hasAiActLabel,
         `"${specs.global.aiActLabel}"`
       )
@@ -143,7 +143,7 @@ interface Html5Input {
   html5FormatId: string;
   width: number;
   height: number;
-  /** Pakatun zip-paketin koko tai HTML:n koko tavuina. */
+  /** The size of the zipped package, or of the HTML, in bytes. */
   fileSizeBytes: number;
   animationSeconds: number;
   copy: CopyVariant;
@@ -151,7 +151,7 @@ interface Html5Input {
   html: string;
 }
 
-/** Validoi HTML5-animaatioaineiston. */
+/** Validate an animated HTML5 asset. */
 export function validateHtml5(input: Html5Input): ValidationResult {
   const h5 = getHtml5Format(input.html5FormatId);
   const base = getFormat(h5.baseFormat);
@@ -160,9 +160,9 @@ export function validateHtml5(input: Html5Input): ValidationResult {
   checks.push(
     check(
       "dimensions",
-      "Mitat",
+      "Dimensions",
       input.width === base.width && input.height === base.height,
-      `${input.width}×${input.height} px (vaadittu ${base.width}×${base.height})`
+      `${input.width}×${input.height} px (required ${base.width}×${base.height})`
     )
   );
 
@@ -170,41 +170,41 @@ export function validateHtml5(input: Html5Input): ValidationResult {
   checks.push(
     check(
       "filesize",
-      "Alkulatauksen koko",
+      "Initial load size",
       input.fileSizeBytes <= maxBytes,
-      `${Math.round(input.fileSizeBytes / KB)} kt / max ${h5.maxFileSizeKb} kt`
+      `${Math.round(input.fileSizeBytes / KB)} kB / max ${h5.maxFileSizeKb} kB`
     )
   );
 
   checks.push(
     check(
       "animation",
-      "Animaation kesto",
+      "Animation length",
       input.animationSeconds <= h5.maxAnimationSeconds,
       `${input.animationSeconds} s / max ${h5.maxAnimationSeconds} s`
     )
   );
 
-  // Alma vaatii, että kaikki ulkoiset resurssit ladataan HTTPS:n yli.
+  // Alma requires every external resource to load over HTTPS.
   const insecure = input.html.match(/(?:src|href)\s*=\s*["']http:\/\/[^"']+/gi);
   checks.push(
     check(
       "https",
-      "HTTPS-resurssit",
+      "HTTPS resources",
       !insecure,
       insecure
-        ? `${insecure.length} http-resurssia`
-        : "Ei http-resursseja"
+        ? `${insecure.length} http resources`
+        : "No http resources"
     )
   );
 
-  // jQuery on Alman ohjeissa erikseen kielletty tiedostopainon vuoksi.
+  // Alma's guidelines forbid jQuery outright, because of its file weight.
   checks.push(
     check(
       "nojquery",
-      "Ei jQueryä",
+      "No jQuery",
       !/jquery/i.test(input.html),
-      "Alma: vältä jQueryä tiedostopainon vuoksi"
+      "Alma: avoid jQuery because of file weight"
     )
   );
 
@@ -214,7 +214,7 @@ export function validateHtml5(input: Html5Input): ValidationResult {
     checks.push(
       check(
         "aiact",
-        "AI Act -merkintä",
+        "AI Act label",
         input.hasAiActLabel,
         `"${specs.global.aiActLabel}"`
       )
@@ -231,29 +231,29 @@ function textChecks(
   return [
     check(
       "headline",
-      "Otsikon pituus",
+      "Headline length",
       copy.headline.length <= limits.headline,
-      `${copy.headline.length} / ${limits.headline} merkkiä`
+      `${copy.headline.length} / ${limits.headline} characters`
     ),
     check(
       "body",
-      "Leipätekstin pituus",
+      "Body length",
       copy.body.length <= limits.body,
-      `${copy.body.length} / ${limits.body} merkkiä`
+      `${copy.body.length} / ${limits.body} characters`
     ),
     check(
       "cta",
-      "CTA:n pituus",
+      "CTA length",
       copy.cta.length <= limits.cta,
-      `${copy.cta.length} / ${limits.cta} merkkiä`
+      `${copy.cta.length} / ${limits.cta} characters`
     ),
     charsetCheck(copy),
   ];
 }
 
-/** Kyrilliset homoglyyfit ("lempipiццasi") näyttävät oikealta vilkaisulla,
- *  mutta ovat rikkinäistä suomea. Generointi suodattaa ne jo, mutta
- *  tarkistus tekee lipsahduksen näkyväksi käyttäjälle. */
+/** Cyrillic homoglyphs ("piцца") look right at a glance but are broken text.
+ *  Generation already filters them out; this check makes any slip visible to
+ *  the user. */
 const NON_LATIN = /[Ѐ-ӿͰ-Ͽ]/g;
 
 function charsetCheck(copy: CopyVariant): ValidationCheck {
@@ -261,15 +261,15 @@ function charsetCheck(copy: CopyVariant): ValidationCheck {
   const found = [...new Set(all.match(NON_LATIN) ?? [])];
   return check(
     "charset",
-    "Merkistö",
+    "Character set",
     found.length === 0,
     found.length
-      ? `Vieraita merkkejä: ${found.join(" ")}`
-      : "Vain latinalaisia merkkejä"
+      ? `Foreign characters: ${found.join(" ")}`
+      : "Latin characters only"
   );
 }
 
-/** Leikkaa copyn speksin rajoihin ennen renderöintiä. */
+/** Trim the copy to the spec limits before rendering. */
 export function fitCopyToLimits(
   copy: CopyVariant,
   limits: { headline: number; body: number; cta: number }
@@ -285,7 +285,7 @@ export function fitCopyToLimits(
 function truncate(s: string, max: number): string {
   const t = (s ?? "").trim();
   if (t.length <= max) return t;
-  // Katkaise sanarajalta, ei keskeltä sanaa.
+  // Cut at a word boundary, not mid-word.
   const cut = t.slice(0, max - 1);
   const lastSpace = cut.lastIndexOf(" ");
   return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trim() + "…";

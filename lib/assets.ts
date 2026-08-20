@@ -25,7 +25,7 @@ export async function fetchWithTimeout(
       signal: ctrl.signal,
       headers: {
         "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 AMR-Aineistostudio/0.1",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 AMR-AssetStudio/0.1",
         ...(init?.headers ?? {}),
       },
     });
@@ -35,12 +35,13 @@ export async function fetchWithTimeout(
 }
 
 /**
- * Lataa kuva ja palauta data-URI:na. Palauttaa null jos lataus epäonnistuu,
- * kuva on liian iso tai se ei ole kuva — kutsuja jatkaa ilman kuvaa.
+ * Fetch an image and return it as a data URI. Returns null when the fetch
+ * fails, the image is too large, or it is not an image at all — the caller
+ * carries on without it.
  */
 export async function toDataUri(url: string): Promise<string | null> {
-  // Käyttäjän koneelta ladattu kuva on jo data-URI. Sitä ei haeta verkosta
-  // eikä sen polusta yritetä päätellä tiedostotyyppiä.
+  // An image uploaded from the user's machine is already a data URI. It is
+  // not fetched, and no file type is inferred from its path.
   if (url.startsWith("data:image/")) return url;
 
   try {
@@ -67,7 +68,7 @@ export async function toDataUri(url: string): Promise<string | null> {
   }
 }
 
-/** Lataa useita kuvia rinnakkain; epäonnistuneet pudotetaan pois. */
+/** Fetch several images in parallel; failures are dropped. */
 export async function toDataUris(
   urls: string[]
 ): Promise<Map<string, string>> {

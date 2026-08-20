@@ -1,26 +1,24 @@
-import { NextResponse } from "next/server";
 import { scrape } from "@/lib/scrape";
 import { analyzeBrand, hasApiKey } from "@/lib/claude";
 import { specs, goals } from "@/lib/specs";
 
-export const runtime = "nodejs";
-export const maxDuration = 60;
+import type { Route } from "./+types/api.extract";
 
-export async function POST(req: Request) {
+export async function action({ request }: Route.ActionArgs) {
   let url: string;
   try {
-    const body = await req.json();
+    const body = await request.json();
     url = String(body?.url ?? "").trim();
   } catch {
-    return NextResponse.json(
-      { error: "Virheellinen pyyntö." },
+    return Response.json(
+      { error: "Invalid request." },
       { status: 400 }
     );
   }
 
   if (!url) {
-    return NextResponse.json(
-      { error: "Anna verkkosivun osoite." },
+    return Response.json(
+      { error: "Enter a website address." },
       { status: 400 }
     );
   }
@@ -29,7 +27,7 @@ export async function POST(req: Request) {
     const scraped = await scrape(url);
     const brand = await analyzeBrand(scraped);
 
-    return NextResponse.json({
+    return Response.json({
       brand,
       meta: {
         usedPlaywright: scraped.usedPlaywright,
@@ -40,7 +38,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const message =
-      e instanceof Error ? e.message : "Sivun analysointi epäonnistui.";
-    return NextResponse.json({ error: message }, { status: 502 });
+      e instanceof Error ? e.message : "Analysing the page failed.";
+    return Response.json({ error: message }, { status: 502 });
   }
 }

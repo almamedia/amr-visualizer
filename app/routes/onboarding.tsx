@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * AMS Advertising Onboarding.
  *
@@ -13,6 +11,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Route } from "./+types/onboarding";
+import "./onboarding.css";
 import {
   audienceTypeOptions,
   budgetTiers,
@@ -49,6 +49,17 @@ import type {
   GoalId,
   StartMode,
 } from "@/lib/onboarding/types";
+
+export function meta(_: Route.MetaArgs) {
+  return [
+    { title: "Advertise with Alma — find where to start" },
+    {
+      name: "description",
+      content:
+        "Answer a few questions and get a recommendation for the right channels, ad formats and budget for your business.",
+    },
+  ];
+}
 
 type Step =
   | "welcome"

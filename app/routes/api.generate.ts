@@ -1,21 +1,19 @@
-import { NextResponse } from "next/server";
 import { generateAssets } from "@/lib/generate";
 import type { BrandCard, CopyVariant, GoalId } from "@/lib/types";
 import { specs } from "@/lib/specs";
 
-export const runtime = "nodejs";
-export const maxDuration = 120;
+import type { Route } from "./+types/api.generate";
 
 const VALID_GOALS = new Set(specs.goals.map((g) => g.id));
 
-export async function POST(req: Request) {
+export async function action({ request }: Route.ActionArgs) {
   let brand: BrandCard;
   let goalId: GoalId;
   let formatIds: string[] | undefined;
   let copyVariants: CopyVariant[] | undefined;
 
   try {
-    const body = await req.json();
+    const body = await request.json();
     brand = body?.brand;
     goalId = body?.goalId;
     formatIds = Array.isArray(body?.formatIds) ? body.formatIds : undefined;
@@ -23,18 +21,18 @@ export async function POST(req: Request) {
       ? body.copyVariants
       : undefined;
   } catch {
-    return NextResponse.json({ error: "Virheellinen pyyntö." }, { status: 400 });
+    return Response.json({ error: "Invalid request." }, { status: 400 });
   }
 
   if (!brand?.companyName) {
-    return NextResponse.json(
-      { error: "Brändikortti puuttuu tai on vaillinainen." },
+    return Response.json(
+      { error: "The brand card is missing or incomplete." },
       { status: 400 }
     );
   }
   if (!VALID_GOALS.has(goalId)) {
-    return NextResponse.json(
-      { error: "Valitse kampanjatavoite." },
+    return Response.json(
+      { error: "Choose a campaign goal." },
       { status: 400 }
     );
   }
@@ -46,10 +44,10 @@ export async function POST(req: Request) {
       formatIds,
       copyVariants,
     });
-    return NextResponse.json(result);
+    return Response.json(result);
   } catch (e) {
     const message =
-      e instanceof Error ? e.message : "Aineistojen generointi epäonnistui.";
-    return NextResponse.json({ error: message }, { status: 500 });
+      e instanceof Error ? e.message : "Generating the assets failed.";
+    return Response.json({ error: message }, { status: 500 });
   }
 }

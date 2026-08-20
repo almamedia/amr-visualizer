@@ -10,13 +10,13 @@ export interface BannerInput {
   imageDataUri: string | null;
   /** Logo data-URI:na tai null. */
   logoDataUri: string | null;
-  /** Lisää CSS-animaatiot (HTML5-versio). */
+  /** Add the CSS animations (the HTML5 version). */
   animated: boolean;
 }
 
 type Layout = "wide" | "square" | "tall";
 
-/** Fonttinimien mappaus järjestelmäfontteihin — ei ulkoisia fonttilatauksia,
+/** Map font names onto system fonts — no external font loads,
  *  koska Alma laskee ulkoiset fontit tiedostokokorajaan. */
 function fontStack(name: string): string {
   const n = (name || "").toLowerCase();
@@ -77,11 +77,11 @@ const INK = "#141821";
 const PAPER = "#ffffff";
 
 /**
- * Valitse luettava tekstiväri taustaa vasten. Kiinteä luminanssikynnys ei
- * riitä: keskisävyinen väri kuten kulta (luminanssi ~0,35) jäi kynnyksen
- * alle ja sai valkoisen tekstin, jonka kontrasti on vain 2,6:1 — tumma
- * teksti samalla pohjalla on 6,6:1. Verrataan siis kontrastit ja valitaan
- * parempi sen sijaan että arvattaisiin kynnyksellä.
+ * Pick a readable text colour against a ground. A fixed luminance threshold is
+ * not enough: a mid-tone colour such as gold (luminance ~0.35) fell on the
+ * dark side of the threshold and took white text at a contrast of just 2.6:1
+ * — dark text on the same ground is 6.6:1. So compare both ratios and take the
+ * better one rather than guessing with a threshold.
  */
 function readableOn(bg: string): string {
   return contrastRatio(PAPER, bg) >= contrastRatio(INK, bg) ? PAPER : INK;
@@ -106,15 +106,15 @@ export interface BannerColors {
 }
 
 /**
- * Ratkaisee bannerin värit. Sama funktio ajetaan sekä renderöinnissä että
- * validoinnissa, jotta kontrastitarkistus mittaa juuri niitä värejä, jotka
- * aineistoon päätyvät.
+ * Resolve the banner's colours. The same function runs during rendering and
+ * during validation, so the contrast check measures exactly the colours that
+ * end up in the asset.
  *
- * Moodit tulevat AMR Design Systemistä:
- * - Editorial Light: vaalea pohja, kuva kantaa ilmeen.
- * - Bold: täyskylläinen brändiväri pohjana. Ilman kuvaa tämä on selvästi
- *   parempi — valkoinen banneri katoaa julkaisijan valkoiselle sivulle,
- *   ja tyhjä pinta näyttää keskeneräiseltä.
+ * The modes come from the AMR Design System:
+ * - Editorial Light: a light ground, with the image carrying the look.
+ * - Bold: a fully saturated brand colour as the ground. With no image this is
+ *   clearly the better one — a white banner vanishes into the publisher's white
+ *   page, and an empty surface looks unfinished.
  */
 export function resolveBannerColors(
   brand: BrandCard,
@@ -140,9 +140,9 @@ export function resolveBannerColors(
     };
   }
 
-  // Värillinen pohja: riittävän kylläinen ja tarpeeksi tumma, jotta
-  // tekstille löytyy luettava vastaväri. Lähes valkoinen "brändiväri" on
-  // yleensä poimintavirhe, eikä siitä saa pohjaa.
+  // A coloured ground has to be saturated enough and dark enough for a
+  // readable counter-colour to exist. A near-white "brand colour" is usually
+  // a picking error, and makes no ground at all.
   const ground =
     [primary, secondary, accent, brandText].find(
       (c) => saturation(c) > 0.18 && luminance(c) > 0.015 && luminance(c) < 0.7
@@ -152,8 +152,8 @@ export function resolveBannerColors(
 
   const text = readableOn(ground);
 
-  // CTA erottuu pohjasta. Korostusväri kelpaa, jos se irtoaa pohjasta ja
-  // kantaa itse luettavan tekstin; muuten käytetään vastapoolia.
+  // The CTA separates from the ground. The accent works if it lifts off the
+  // ground and carries readable text itself; otherwise use the opposite pole.
   const accentWorks =
     contrastRatio(accent, ground) >= 2.2 &&
     contrastRatio(readableOn(accent), accent) >= 4.5;
@@ -194,8 +194,8 @@ export function renderBannerHtml(input: BannerInput): string {
 
   const hasImage = Boolean(imageDataUri);
 
-  // Ilman kuvaa teksti saa koko pinnan, joten se saa myös kasvaa. Muuten
-  // banneriin jää iso tyhjä alue ja viesti jää heiveröiseksi.
+  // With no image the text gets the whole surface, so it may grow into it.
+  // Otherwise a large empty area is left and the message reads as thin.
   const fill = hasImage ? 1 : 1.24;
 
   const headlineSize = Math.round(
@@ -234,8 +234,8 @@ export function renderBannerHtml(input: BannerInput): string {
 
   const labelSize = Math.max(8, Math.round(9 * Math.max(1, scale * 0.8)));
 
-  // Merkintä voi osua valokuvan päälle, joten se saa oman taustalaatan
-  // mainoksen omasta taustavärista — luettava sekä kuvan että pohjan päällä.
+  // The label can land over a photo, so it gets its own backing tile in the
+  // ad's own background colour — readable over both the image and the ground.
   const aiLabelBg = rgba(bg, 0.88);
   const aiLabelText = rgba(text, 0.75);
 
@@ -279,11 +279,11 @@ export function renderBannerHtml(input: BannerInput): string {
     background-size:cover;background-position:center;
     ${a ? "animation:kenburns 9s ease-out both;" : ""}
   }
-  /* Terävä raja kuvan ja tekstipinnan välillä. Häivytystä kokeiltiin, mutta
-     poimittujen valokuvien tummat alueet muuttuivat sen läpi harmaaksi
-     suttaumaksi — selkeä jako on ennustettavampi mielivaltaisilla kuvilla.
-     Signature-väripalkkia ei piirretä värilliselle pohjalle: design system
-     rajaa sen Mode A:han, eikä se erotu täyskylläiseltä pinnalta. */
+  /* A hard edge between the image and the text surface. A fade was tried, but
+     the dark areas of scraped photos turned to grey mush through it — a clean
+     split is more predictable across arbitrary images. The signature colour bar
+     is not drawn on a coloured ground: the design system restricts it to Mode A,
+     and it does not separate from a fully saturated surface. */
   .media::after{
     content:"";position:absolute;z-index:1;
     ${
@@ -322,8 +322,8 @@ export function renderBannerHtml(input: BannerInput): string {
     line-height:1.1;
     letter-spacing:-.022em;
     font-weight:800;
-    /* Viimeinen suoja: jos yhdyssana ei mahdu pienimmälläkään koolla,
-       se katkeaa rivin sisällä eikä leikkaudu reunasta pois. */
+    /* Last resort: if a compound word will not fit even at the smallest size,
+       it breaks within the line rather than being clipped at the edge. */
     overflow-wrap:anywhere;
     ${anim("fadeUp", 0.25)}
   }
@@ -346,7 +346,7 @@ export function renderBannerHtml(input: BannerInput): string {
     white-space:nowrap;
     ${anim("popIn", 0.68, 0.5)}
   }
-  /* AI Act -merkintä on luettava myös valokuvan päällä: oma taustalaatta. */
+  /* The AI Act label must read over a photo too: its own backing tile. */
   .aiact{
     position:absolute;
     right:${Math.round(pad * 0.42)}px;
@@ -401,12 +401,12 @@ export function renderBannerHtml(input: BannerInput): string {
     }
   </div>
 <script>
-/* Sovita teksti laatikkoon. Merkkiraja on arvio: suomen yhdyssanat vaihtelevat
-   pituudeltaan rajusti, ja sama merkkimäärä taittuu eri tavalla eri kokoihin.
-   Siksi typografia joustaa sen sijaan että teksti katkaistaisiin kesken —
-   katkaisu pudottaisi kokonaisen sanan yhden merkin ylityksen takia.
-   Ajetaan synkronisesti ennen load-tapahtumaa, joten kuvakaappaus näkee
-   lopullisen asettelun. */
+/* Fit the text to its box. A character limit is only an estimate: word lengths
+   vary wildly, and the same character count wraps differently at different
+   sizes. So the typography gives rather than the text being cut — cutting would
+   drop a whole word over a single character of overflow.
+   This runs synchronously before the load event, so the screenshot sees the
+   final layout. */
 (function () {
   var box = document.querySelector('.content');
   var head = document.querySelector('h1');
@@ -428,8 +428,8 @@ export function renderBannerHtml(input: BannerInput): string {
     return total + Math.max(0, kids.length - 1) * gap;
   }
 
-  /* Yksittäinen pitkä yhdyssana voi olla leveämpi kuin koko banneri, jolloin
-     se leikkautuu reunasta vaikka korkeus riittäisi. Siksi mitataan
+  /* A single long compound word can be wider than the whole banner, clipping
+     at the edge even when the height is fine. So measure
      molemmat suunnat. */
   function tooWide(el) {
     return el.scrollWidth > el.clientWidth + 1;
@@ -449,8 +449,8 @@ export function renderBannerHtml(input: BannerInput): string {
     }
   }
 
-  /* Otsikko joustaa ensin — se vie eniten tilaa ja kestää kutistamisen
-     parhaiten. Leipäteksti vasta jos se ei riitä. */
+  /* The headline gives first — it takes the most room and survives shrinking
+     best. The body copy only if that is not enough. */
   shrink(head, 0.6, 12);
   var body = document.querySelector('p.body');
   if (body && overflows(body)) shrink(body, 0.78, 10);
@@ -460,5 +460,5 @@ export function renderBannerHtml(input: BannerInput): string {
 </html>`;
 }
 
-/** Animaation kokonaiskesto sekunteina — validointi vertaa tätä speksin rajaan. */
+/** Total animation length in seconds — validation compares this to the spec limit. */
 export const ANIMATION_DURATION_SECONDS = 9;

@@ -1,16 +1,16 @@
 /* ============================================================
-   AMR Aineistostudio — käyttöliittymän tyylit.
-   Rakennettu AMR Design Systemin varaan (claude.ai/design,
-   projekti "AMR Design System"). Tokenit on kopioitu suoraan
-   lähteestä tokens/colors.css, typography.css ja spacing.css.
+   AMR Asset Studio — interface styles.
+   Built on the AMR Design System (claude.ai/design, project
+   "AMR Design System"). The tokens are copied straight from
+   tokens/colors.css, typography.css and spacing.css.
 
-   Moodi: A — Editorial Light. Tämä on työkalu, ei mainos:
-   lomakepainotteinen käyttöliittymä lukee paremmin vaalealla
-   pohjalla, ja mainosten esikatselut istuvat neutraalille
-   paperille luontevammin kuin täyskylläiselle violetille.
+   Mode: A — Editorial Light. This is a tool, not an ad: a
+   form-led interface reads better on a light ground, and ad
+   previews sit more naturally on neutral paper than on a
+   fully saturated violet.
    ============================================================ */
 
-/* ---------------------------------------------- värit */
+/* --------------------------------------------- colours */
 :root {
   --violet: #9f248f;
   --green: #28b78f;
@@ -27,12 +27,12 @@
   --violet-deepest: #46093e;
   --green-deeper: #146f59;
 
-  /* Kontrastiturvallinen väriteksti. Vain violetti ja vihreä kantavat
-     tekstiä — oliivi ei koskaan, millään pohjalla. */
+  /* Contrast-safe coloured text. Only violet and green carry text —
+     olive never does, on any ground. */
   --violet-on-light: var(--violet); /* 6,28:1 */
-  --green-on-light: var(--green-deeper); /* brändivihreä yksin on 2,37:1 */
+  --green-on-light: var(--green-deeper); /* the brand green alone is 2.37:1 */
 
-  /* Sävytetyt neutraalit: paperi ja muste nojaavat päähueen. */
+  /* Tinted neutrals: the paper and the ink lean toward the main hue. */
   --paper: #faf6f8;
   --paper-alt: #f3edf1;
   --hairline: #e4d8e0;
@@ -52,19 +52,20 @@
   --cta-fill: var(--violet);
   --cta-text: var(--white);
 
-  /* Validoinnin tilat. Design systemissä ei ole virhevärille tokenia
-     — paletti on violetti, vihreä ja oliivi. Vihreä = hyväksytty,
-     violetti = vaatii huomiota. Oliivia ei käytetä tekstiin. */
+  /* Validation states. The design system has no token for an error
+     colour — the palette is violet, green and olive. Green = passed,
+     violet = needs attention. Olive is never used for text. */
   --state-pass: var(--green-on-light);
   --state-pass-bg: var(--green-20);
   --state-attention: var(--violet);
   --state-attention-bg: var(--violet-20);
 
   /* ---------------------------------------------- typografia */
-  /* next/font tarjoaa Archivon muuttujana --font-archivo; literaali nimi jää
-     varalle, jos fonttia käytetään ilman Nextin optimointia. */
-  --font-family: var(--font-archivo), "Archivo", "Helvetica Neue", Arial,
-    sans-serif;
+  /* Archivo haetaan Google Fontsista app/root.tsx:n links-exportissa. Nimi
+     set here as its own token so --font-family stays the same chain as
+     before: next/font used to fill in --font-archivo. */
+  --font-archivo: "Archivo";
+  --font-family: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
   --weight-regular: 400;
   --weight-bold: 800;
 
@@ -82,7 +83,7 @@
   --leading-normal: 1.5;
 
   --tracking-headline: -0.02em;
-  --tracking-finnish: -0.025em;
+  --tracking-tight: -0.025em;
   --tracking-eyebrow: 0.08em;
 
   /* ---------------------------------------------- tila ja muodot */
@@ -131,7 +132,7 @@ body {
 }
 
 /* Kaksi painoa per sommitelma: 800 otsikoihin ja toimintoihin,
-   400 leipätekstiin. Ohutta 100:aa ei käytetä käyttöliittymässä. */
+   400 for body copy. The thin 100 is not used in the interface. */
 
 .wrap {
   max-width: 1120px;
@@ -159,7 +160,7 @@ body {
 .masthead h1 {
   font-size: var(--text-h2);
   font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-finnish);
+  letter-spacing: var(--tracking-tight);
   line-height: var(--leading-snug);
   margin: 0 0 var(--space-1);
   color: var(--text-strong);
@@ -230,7 +231,7 @@ body {
   margin-bottom: var(--space-4);
 }
 
-/* Signature-väripalkki: yksivärinen, hiljainen tunniste. */
+/* Signature colour bar: single-colour, a quiet mark of identity. */
 .card-bar {
   height: var(--bar-height);
   background: var(--violet);
@@ -247,7 +248,7 @@ body {
 .card h2 {
   font-size: var(--text-h3);
   font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-finnish);
+  letter-spacing: var(--tracking-tight);
   line-height: var(--leading-snug);
   margin: 0 0 var(--space-1);
   color: var(--text-strong);
@@ -450,14 +451,14 @@ button.tiny {
   text-transform: none;
 }
 
-/* Rajan ylitys ei estä tallennusta — teksti leikataan renderöinnissä
-   sanarajalta — mutta käyttäjän on nähtävä se etukäteen. */
+/* Going over the limit does not block saving — the text is trimmed at a word
+   boundary during rendering — but the user has to see it coming. */
 .counter.over {
   color: var(--violet);
   font-weight: var(--weight-bold);
 }
 
-/* ---------------------------------------------- brändikortti */
+/* ----------------------------------------------- brand card */
 .brand-grid {
   display: grid;
   grid-template-columns: 220px 1fr;
@@ -537,9 +538,9 @@ button.tiny {
   position: relative;
 }
 
-/* Latauslaatta osana kuvaruudukkoa: "lisää kuvia" on siellä missä kuvatkin,
-   ei sivun oikeassa reunassa mistä sen huomaa huonosti. Katkoviiva ja plus
-   ovat vakiintunut "lisää"-affordanssi. */
+/* The upload tile lives inside the image grid: "add images" sits where the
+   images are, not off at the right edge where it is easy to miss. A dashed
+   border and a plus are the settled affordance for "add". */
 .uploadtile {
   display: flex;
   flex-direction: column;
@@ -610,8 +611,8 @@ button.tiny {
   line-height: 1;
 }
 
-/* Tiedostonvalinta näyttää painikkeelta: <input type="file"> ei ole
-   tyylitettävissä, joten se piilotetaan labelin sisään. */
+/* The file picker looks like a button: <input type="file"> cannot be styled,
+   so it is hidden inside the label. */
 .uploadbtn {
   display: inline-flex;
   align-items: center;
@@ -697,7 +698,7 @@ button.tiny {
   color: var(--text-muted);
 }
 
-/* ---------------------------------------------- aineistot */
+/* --------------------------------------------------- assets */
 .assets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -714,8 +715,8 @@ button.tiny {
   flex-direction: column;
 }
 
-/* Vaalea shakkiruudutus: näyttää mainoksen reunat ja mahdollisen
-   läpinäkyvyyden ilman että se kilpailee sisällön kanssa. */
+/* A light chequerboard: shows the ad's edges and any transparency without
+   competing with the content. */
 .asset .preview {
   background-color: var(--paper-alt);
   background-image: linear-gradient(45deg, #e9dfe6 25%, transparent 25%),
@@ -748,7 +749,7 @@ button.tiny {
   margin: 0 0 var(--space-1);
   font-size: var(--text-small);
   font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-finnish);
+  letter-spacing: var(--tracking-tight);
   color: var(--text-strong);
   display: flex;
   align-items: center;
@@ -841,7 +842,7 @@ button.tiny {
   color: var(--ink);
 }
 
-/* Kehittäjäohje erottuu käyttäjälle suunnatusta viestistä. */
+/* A developer note reads apart from a message aimed at the user. */
 .devhint {
   display: block;
   margin-top: var(--space-2);
@@ -874,8 +875,8 @@ button.tiny {
   margin-top: var(--space-3);
 }
 
-/* "Seuraava askel" on oma osionsa, ei jatketta aineistoille — selvä
-   pystyväli erottaa sen edellä olevasta aineistoruudukosta. */
+/* "Next step" is its own section, not a continuation of the assets — clear
+   vertical space separates it from the asset grid above. */
 .handoff {
   border-color: var(--green);
   margin-top: var(--space-6);

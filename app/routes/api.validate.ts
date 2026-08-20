@@ -1,20 +1,19 @@
-import { NextResponse } from "next/server";
 import { validateStatic, validateHtml5 } from "@/lib/validate";
 import { specs } from "@/lib/specs";
 
-export const runtime = "nodejs";
+import type { Route } from "./+types/api.validate";
 
 /**
- * Tarkistaa yksittäisen aineiston speksejä vasten. Generointi validoi
- * aineistot jo valmiiksi; tämä on erillinen tarkistuspiste esimerkiksi
- * käsin muokatulle copylle tai ulkopuolelta tuodulle aineistolle.
+ * Check a single asset against the specs. Generation already validates what it
+ * makes; this is a separate checkpoint for, say, hand-edited copy or an asset
+ * brought in from outside.
  */
-export async function POST(req: Request) {
+export async function action({ request }: Route.ActionArgs) {
   try {
-    const body = await req.json();
+    const body = await request.json();
 
     if (body?.kind === "html5") {
-      return NextResponse.json(
+      return Response.json(
         validateHtml5({
           html5FormatId: body.html5FormatId,
           width: Number(body.width),
@@ -28,7 +27,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json(
+    return Response.json(
       validateStatic({
         formatId: body.formatId,
         width: Number(body.width),
@@ -41,12 +40,12 @@ export async function POST(req: Request) {
     );
   } catch (e) {
     const message =
-      e instanceof Error ? e.message : "Validointi epäonnistui.";
-    return NextResponse.json({ error: message }, { status: 400 });
+      e instanceof Error ? e.message : "Validation failed.";
+    return Response.json({ error: message }, { status: 400 });
   }
 }
 
-/** Speksikirjaston sisältö UI:lle ja tarkistuksiin. */
-export async function GET() {
-  return NextResponse.json(specs);
+/** The spec library, for the UI and for checks. */
+export function loader() {
+  return Response.json(specs);
 }

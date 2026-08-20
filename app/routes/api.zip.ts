@@ -3,26 +3,25 @@ import { specs } from "@/lib/specs";
 import { slug } from "@/lib/generate";
 import type { GeneratedAsset } from "@/lib/types";
 
-export const runtime = "nodejs";
-export const maxDuration = 60;
+import type { Route } from "./+types/api.zip";
 
-export async function POST(req: Request) {
+export async function action({ request }: Route.ActionArgs) {
   let assets: GeneratedAsset[];
   let companyName: string;
 
   try {
-    const body = await req.json();
+    const body = await request.json();
     assets = Array.isArray(body?.assets) ? body.assets : [];
-    companyName = String(body?.companyName ?? "aineistot");
+    companyName = String(body?.companyName ?? "assets");
   } catch {
-    return new Response(JSON.stringify({ error: "Virheellinen pyyntö." }), {
+    return new Response(JSON.stringify({ error: "Invalid request." }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
   }
 
   if (assets.length === 0) {
-    return new Response(JSON.stringify({ error: "Ei pakattavia aineistoja." }), {
+    return new Response(JSON.stringify({ error: "No assets to package." }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
@@ -48,12 +47,12 @@ export async function POST(req: Request) {
     }
   }
 
-  archive.append(buildReadme(assets, companyName), { name: "LUEMINUT.txt" });
+  archive.append(buildReadme(assets, companyName), { name: "README.txt" });
   archive.finalize();
   await done;
 
   const zip = Buffer.concat(chunks);
-  const fileName = `${slug(companyName)}_amr-aineistot.zip`;
+  const fileName = `${slug(companyName)}_amr-ad-assets.zip`;
 
   return new Response(new Uint8Array(zip), {
     headers: {
@@ -68,28 +67,28 @@ function buildReadme(assets: GeneratedAsset[], companyName: string): string {
   const lines: string[] = [];
   const allPass = assets.every((a) => a.validation.pass);
 
-  lines.push(`AMR Aineistostudio — ${companyName}`);
+  lines.push(`AMR Asset Studio — ${companyName}`);
   lines.push("=".repeat(60));
   lines.push("");
-  lines.push(`Luotu: ${new Date().toISOString().slice(0, 16).replace("T", " ")}`);
-  lines.push(`Aineistoja: ${assets.length}`);
+  lines.push(`Created: ${new Date().toISOString().slice(0, 16).replace("T", " ")}`);
+  lines.push(`Assets: ${assets.length}`);
   lines.push(
-    `Validointi: ${allPass ? "kaikki läpäisivät" : "osa ei läpäissyt, katso alta"}`
+    `Validation: ${allPass ? "all passed" : "some did not pass, see below"}`
   );
   lines.push("");
   lines.push(
-    `Aineistot on tarkistettu Alma Median display-aineisto-ohjeita vasten.`
+    `These assets have been checked against Alma Media's display advertising specs.`
   );
-  lines.push(`Lähde: ${specs.source.url}`);
-  lines.push(`Speksit haettu: ${specs.source.fetchedAt}`);
+  lines.push(`Source: ${specs.source.url}`);
+  lines.push(`Specs fetched: ${specs.source.fetchedAt}`);
   lines.push("");
   if (specs.global.requireAiActLabel) {
-    lines.push(`AI Act -merkintä: "${specs.global.aiActLabel}" on upotettu`);
-    lines.push(`jokaiseen aineistoon näkyvänä tekstinä.`);
+    lines.push(`AI Act label: "${specs.global.aiActLabel}" is embedded`);
+    lines.push(`in every asset as visible text.`);
     lines.push("");
   }
   lines.push("-".repeat(60));
-  lines.push("AINEISTOT");
+  lines.push("ASSETS");
   lines.push("-".repeat(60));
 
   for (const a of assets) {
@@ -98,28 +97,28 @@ function buildReadme(assets: GeneratedAsset[], companyName: string): string {
     lines.push(
       `  ${a.formatName} · ${a.width}×${a.height} px · ${Math.round(
         a.fileSizeBytes / 1024
-      )} kt · ${a.kind === "html5" ? "HTML5-animaatio" : "staattinen"}`
+      )} kB · ${a.kind === "html5" ? "HTML5 animation" : "static"}`
     );
-    lines.push(`  Otsikko: ${a.copy.headline}`);
-    lines.push(`  Teksti:  ${a.copy.body}`);
-    lines.push(`  CTA:     ${a.copy.cta}`);
+    lines.push(`  Headline: ${a.copy.headline}`);
+    lines.push(`  Body:     ${a.copy.body}`);
+    lines.push(`  CTA:      ${a.copy.cta}`);
     for (const c of a.validation.checks) {
       lines.push(
-        `  ${c.pass ? "[OK]" : "[EI]"} ${c.label}${c.detail ? `: ${c.detail}` : ""}`
+        `  ${c.pass ? "[OK]" : "[NO]"} ${c.label}${c.detail ? `: ${c.detail}` : ""}`
       );
     }
   }
 
   lines.push("");
   lines.push("-".repeat(60));
-  lines.push("HTML5-AINEISTOT");
+  lines.push("HTML5 ASSETS");
   lines.push("-".repeat(60));
   for (const n of specs.global.html5.notes) lines.push(`- ${n}`);
   lines.push("");
   lines.push(
-    "HTML5-tiedostot ovat itsenäisiä: kuvat ja tyylit on upotettu tiedostoon,"
+    "The HTML5 files are self-contained: images and styles are embedded in the"
   );
-  lines.push("joten ulkoisia latauksia ei tehdä.");
+  lines.push("file, so nothing is loaded from outside.");
   lines.push("");
 
   return lines.join("\n");
