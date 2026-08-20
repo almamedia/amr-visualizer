@@ -7,6 +7,13 @@ import {
   inferContentTypeFromText,
   resolveContentTypePicks,
 } from "./content-taxonomy";
+import {
+  GLOBAL_LOCATION,
+  inferLocationFromText,
+  isNationalReach,
+  locationKind,
+  resolveLocationPicks,
+} from "./geography";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -596,7 +603,7 @@ function mockCopy(
 /** Below this much visible text the page is a splash or login wall. */
 const MIN_SIGNAL_TEXT = 200;
 
-const SIGNALS_SYSTEM = `You read a scraped Finnish business website and extract structured facts about the business for an advertising recommendation engine.
+const SIGNALS_SYSTEM = `You read a scraped business website and extract structured facts about the business for an advertising recommendation engine.
 
 Return ONLY JSON:
 {
@@ -608,6 +615,8 @@ Return ONLY JSON:
   "summary": string,
   "productsOrServices": string,
   "geographicSignal": string,
+  "geographicKind": "city" | "country" | "global",
+  "geographicAlternatives": [string, string, string, string],
   "ecommerce": boolean,
   "national": boolean,
   "audienceSignals": string[],
@@ -619,8 +628,15 @@ Rules:
 - "summary" is one plain sentence a business owner would recognise as their own.
 - "contentType" is the single best IAB Content Taxonomy 3.1 Name for this website (e.g. "Bars & Restaurants", "Real Estate Buying and Selling"). Use an official Name, as specific as possible. Never invent a label.
 - "contentTypeAlternatives" is exactly four other official IAB Names — the next-closest matches, ordered closest first. No duplicates, and none equal to contentType.
-- "geographicSignal" is the city or region the site says it serves, or "" if the site does not say.
-- "national" is true only if the site claims to serve customers across Finland.
+- "geographicSignal" is where the business operates, at the most specific level the site actually supports:
+  - a city name when they serve one city or a clearly local area (e.g. "Helsinki")
+  - a country name when they serve a whole country or several cities in one country with no single home city (e.g. "Finland")
+  - "Global" when they serve many countries, sell worldwide, or have no geographic limit
+- Prefer city over country over Global when the evidence supports it.
+- Never invent a city that is not on the page. If you only know the country, use the country. If the site does not say, set geographicSignal to "".
+- "geographicKind" matches geographicSignal: "city", "country", or "global".
+- "geographicAlternatives" is exactly four other places the advertiser might pick instead — typically the parent country (if a city), "Global", nearby cities, or neighbouring countries. No duplicates, and none equal to geographicSignal. "Global" must be one of them unless geographicSignal is already "Global".
+- "national" is true only if they serve all of Finland or operate globally.
 - "ecommerce" is true only if you see a cart, a shop, or product pages with prices.
 - "audienceSignals" are short phrases the site uses about who it serves, e.g. ["families", "professionals"]. Empty array if none.
 - "confidence" is 0 to 1: how sure you are the above is right. Score low when the page is thin, generic, or mostly navigation.
@@ -647,10 +663,19 @@ ${s.text.slice(0, 6000)}
     const r = await askJson<Partial<BusinessSignals>>(
       SIGNALS_SYSTEM,
       user,
-      1200,
+      1400,
       "low"
     );
-    return normalizeSignals(r);
+    const pageText = [
+      s.title,
+      s.ogTitle,
+      s.metaDescription,
+      s.ogDescription,
+      s.text.slice(0, 4000),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return normalizeSignals(r, pageText);
   } catch {
     return null;
   }
@@ -664,7 +689,10 @@ const CATEGORIES = new Set([
   "other",
 ]);
 
-function normalizeSignals(r: Partial<BusinessSignals>): BusinessSignals | null {
+function normalizeSignals(
+  r: Partial<BusinessSignals>,
+  pageText = ""
+): BusinessSignals | null {
   const businessName = clean(r.businessName);
   if (!businessName) return null;
 
@@ -681,6 +709,23 @@ function normalizeSignals(r: Partial<BusinessSignals>): BusinessSignals | null {
       : []
   );
 
+  const rawSignal = clean(r.geographicSignal);
+  const rawKind = String(r.geographicKind ?? "").toLowerCase();
+  const primary =
+    rawKind === "global"
+      ? GLOBAL_LOCATION
+      : rawSignal;
+  const geoFromModel = resolveLocationPicks(
+    primary,
+    Array.isArray(r.geographicAlternatives)
+      ? r.geographicAlternatives.map(clean)
+      : []
+  );
+  const geo =
+    geoFromModel.location || !pageText
+      ? geoFromModel
+      : inferLocationFromText(pageText);
+
   return {
     businessName,
     industry: content.contentType || clean(r.industry),
@@ -689,9 +734,11 @@ function normalizeSignals(r: Partial<BusinessSignals>): BusinessSignals | null {
     category,
     summary: clean(r.summary),
     productsOrServices: clean(r.productsOrServices),
-    geographicSignal: clean(r.geographicSignal),
+    geographicSignal: geo.location,
+    geographicAlternatives: geo.locationAlternatives,
+    geographicKind: locationKind(geo.location),
     ecommerce: Boolean(r.ecommerce),
-    national: Boolean(r.national),
+    national: isNationalReach(geo.location),
     audienceSignals: Array.isArray(r.audienceSignals)
       ? r.audienceSignals.map(clean).filter(Boolean).slice(0, 6)
       : [],

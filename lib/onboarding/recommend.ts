@@ -16,7 +16,9 @@ import {
   getDurationOption,
   getFormatOption,
   getGoalOption,
-  getRegion,
+  getRegions,
+  regionDisplayName,
+  regions,
 } from "./catalog";
 import type {
   BusinessSignals,
@@ -48,28 +50,22 @@ function regionModifier(share: number): number {
 
 /** Which goals reward which format (PRD §7 6d "Recommendation logic"). */
 const FORMATS_BY_GOAL: Record<GoalId, string[]> = {
-  traffic: ["performance-display"],
   awareness: ["paraati", "pystyparaati"],
-  event: ["paraati", "boksi"],
+  conversion: ["performance-display"],
   local: ["performance-display"],
-  "online-sales": ["performance-display"],
 };
 
 const FORMAT_RATIONALE: Record<GoalId, string> = {
-  traffic: "You pay per click, so every euro goes to someone who actually visited.",
   awareness: "A large, visible placement at the top of the page builds recognition fast.",
-  event: "Reach and repeat exposure together — people see it, then see it again.",
+  conversion: "You pay per click, so every euro goes to someone ready to visit or buy.",
   local: "Pay-per-click keeps a local budget accountable: no click, no cost.",
-  "online-sales": "Clicks land people straight on the product they saw.",
 };
 
 /** When the user says "I'll decide later", the goal picks the duration. */
 const DURATION_BY_GOAL: Record<GoalId, DurationId> = {
-  traffic: "1-month",
   awareness: "3-months",
-  event: "2-weeks",
+  conversion: "1-month",
   local: "1-month",
-  "online-sales": "1-month",
 };
 
 export function resolvedDuration(answers: FlowAnswers): DurationId {
@@ -111,15 +107,15 @@ export function usableSignals(
 }
 
 /**
- * The goal the website hints at, so step 2 can highlight it. Highlight only —
+ * The goal the website hints at, so step 3 can highlight it. Highlight only —
  * never pre-selected, the user still chooses (PRD §7 step 2).
  */
 export function suggestedGoal(signals: BusinessSignals | null): GoalId | null {
   const s = usableSignals(signals);
   if (!s) return null;
-  if (s.ecommerce || s.category === "ecommerce") return "online-sales";
+  if (s.ecommerce || s.category === "ecommerce") return "conversion";
   if (s.category === "b2b-professional") return "awareness";
-  if (s.geographicSignal && !s.national) return "local";
+  if (s.geographicKind === "city") return "local";
   return null;
 }
 
@@ -128,25 +124,30 @@ export function suggestedRegionId(
   signals: BusinessSignals | null
 ): string | null {
   const s = usableSignals(signals);
-  if (!s?.geographicSignal || s.national) return null;
+  if (!s?.geographicSignal || s.geographicKind !== "city") return null;
   const needle = s.geographicSignal.toLowerCase();
-  const match = getRegionByHint(needle);
-  return match ?? null;
+  return getRegionByHint(needle);
 }
 
 function getRegionByHint(needle: string): string | null {
-  const hints: Record<string, string> = {
-    helsinki: "helsinki-uusimaa",
-    espoo: "helsinki-uusimaa",
-    vantaa: "helsinki-uusimaa",
-    uusimaa: "helsinki-uusimaa",
-    tampere: "pirkanmaa",
-    pirkanmaa: "pirkanmaa",
-    turku: "varsinais-suomi",
-    "varsinais-suomi": "varsinais-suomi",
-  };
-  const key = Object.keys(hints).find((k) => needle.includes(k));
-  return key ? hints[key] : null;
+  let bestId: string | null = null;
+  let bestLen = 0;
+  for (const region of regions) {
+    const terms = [
+      region.name,
+      region.finnishName,
+      ...(region.aliases ?? []),
+    ];
+    for (const term of terms) {
+      const t = term.toLowerCase();
+      if (!t || !needle.includes(t)) continue;
+      if (t.length > bestLen) {
+        bestId = region.id;
+        bestLen = t.length;
+      }
+    }
+  }
+  return bestId;
 }
 
 // ------------------------------------------------------------- channels
@@ -169,7 +170,7 @@ function channelWeights(
   if (weights.size === 0) add("iltalehti", 10);
 
   // 2. Goal modifier (PRD §8).
-  if (answers.goal === "online-sales") add("iltalehti", 3);
+  if (answers.goal === "conversion") add("iltalehti", 3);
   if (answers.goal === "awareness") add("iltalehti", 1);
 
   // 3. AI layer — additive only, so it can reorder but never eliminate.
@@ -195,9 +196,7 @@ function pickChannels(
     .sort((a, b) => b[1] - a[1])
     .map(([id]) => getChannel(id));
 
-  // An event or offer runs on one channel: the same budget spread over two
-  // buys the same people fewer times, and frequency is the whole point.
-  const cap = answers.goal === "event" ? 1 : channelBudgetCap(answers);
+  const cap = channelBudgetCap(answers);
   const picked = ranked.slice(0, Math.max(1, cap));
 
   if (picked.length === 1) {
@@ -287,32 +286,40 @@ function estimateReach(
 }
 
 function audienceShare(answers: FlowAnswers): number {
-  const { geography, regionId } = answers.audience;
+  const { geography, regionIds, cities } = answers.audience;
   if (geography === "finland") return 1;
-  if (geography === "city") return cityFallbackShare;
-  return getRegion(regionId)?.audienceShare ?? 1;
+  if (geography === "city") {
+    return Math.min(1, cityFallbackShare * Math.max(cities.length, 1));
+  }
+  const share = getRegions(regionIds).reduce((sum, r) => sum + r.audienceShare, 0);
+  return Math.min(1, share || 1);
 }
 
 function roundTo(value: number, step: number): number {
   return Math.max(step, Math.round(value / step) * step);
 }
 
+function joinNames(names: string[]): string {
+  if (names.length === 0) return "";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 // -------------------------------------------------------------- summary
 
 export function targetPlace(answers: FlowAnswers): string {
-  const { geography, regionId, city } = answers.audience;
-  if (geography === "city") return city.trim() || "your city";
+  const { geography, regionIds, cities } = answers.audience;
+  if (geography === "city") return joinNames(cities.map((c) => c.trim()).filter(Boolean)) || "your city";
   if (geography === "region")
-    return getRegion(regionId)?.name ?? "your region";
+    return joinNames(getRegions(regionIds).map(regionDisplayName)) || "your region";
   return "Finland";
 }
 
 const GOAL_PHRASE: Record<GoalId, string> = {
-  traffic: "bring more people to your website",
   awareness: "grow awareness for your business",
-  event: "promote your event or offer",
-  local: "grow your local customer base",
-  "online-sales": "drive online sales",
+  conversion: "turn interest into visits and sales",
+  local: "grow your local business",
 };
 
 function buildSummary(answers: FlowAnswers): string {
@@ -370,11 +377,6 @@ export function recommend(
       )}, so none of your budget is spent outside your service area.`
     );
   }
-  if (answers.goal === "event") {
-    notes.push(
-      "We kept this on a single channel. For a time-limited message, showing the same people your ad more often beats reaching more people once."
-    );
-  }
   if (answers.timeline.duration === "undecided") {
     notes.push(
       `You hadn't picked a length, so we planned for ${getDurationOption(
@@ -392,7 +394,11 @@ export function recommend(
       "Your website reads as business-to-business, so we weighted Kauppalehti's professional audience more heavily."
     );
   }
-  if (s?.national && answers.audience.geography !== "finland") {
+  if (s?.geographicKind === "global" && answers.audience.geography !== "finland") {
+    notes.push(
+      "Your website says you operate globally, so we haven't capped the estimate to one area."
+    );
+  } else if (s?.national && answers.audience.geography !== "finland") {
     notes.push(
       "Your website says you serve customers across Finland, so we haven't capped the estimate to one area."
     );

@@ -22,6 +22,7 @@ import {
   formatRequirements,
   goalOptions,
   hasProvisionalData,
+  regionDisplayName,
   regions,
   specsUrl,
 } from "@/lib/onboarding/catalog";
@@ -50,10 +51,17 @@ import type {
   StartMode,
 } from "@/lib/onboarding/types";
 import { ContentTypeSelect } from "@/app/components/content-type-select";
+import { LocationSelect } from "@/app/components/location-select";
+import { MultiSelect } from "@/app/components/multi-select";
 import {
   categoryFromContentType,
   resolveContentTypePicks,
 } from "@/lib/content-taxonomy";
+import {
+  isNationalReach,
+  locationKind,
+  resolveLocationPicks,
+} from "@/lib/geography";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -113,7 +121,7 @@ const EMPTY_ANSWERS: FlowAnswers = {
   urlSkipped: false,
   goal: null,
   timeline: { startMode: "asap", startDate: "", duration: "1-month" },
-  audience: { geography: "finland", regionId: "helsinki-uusimaa", city: "", types: [] },
+  audience: { geography: "finland", regionIds: [], cities: [], types: [] },
   budget: { tier: "small", customEur: null },
 };
 
@@ -124,6 +132,7 @@ const EMPTY_BUSINESS: ConfirmedBusiness = {
   contentTypeAlternatives: [],
   productsOrServices: "",
   location: "",
+  locationAlternatives: [],
 };
 
 export default function OnboardingPage() {
@@ -503,7 +512,7 @@ function GoalStep({
       <h2 className="ob-q">{c.question}</h2>
       <p className="ob-sub">Pick the one that matters most right now.</p>
 
-      <div className="ob-options">
+      <div className="ob-options stacked">
         {goalOptions.map((g) => (
           <OptionCard
             key={g.id}
@@ -619,7 +628,7 @@ function AudienceStep({
   useEffect(() => {
     if (applied.current || !suggestedRegion) return;
     applied.current = true;
-    onChange({ ...value, geography: "region", regionId: suggestedRegion });
+    onChange({ ...value, geography: "region", regionIds: [suggestedRegion] });
     // Only ever runs on the first suggestion; value is intentionally not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestedRegion]);
@@ -637,13 +646,14 @@ function AudienceStep({
 
   const ready =
     value.geography === "finland" ||
-    (value.geography === "region" && Boolean(value.regionId)) ||
-    (value.geography === "city" && Boolean(value.city.trim()));
+    (value.geography === "region" && value.regionIds.length > 0) ||
+    (value.geography === "city" && value.cities.length > 0);
 
   const prefilled =
     suggestedRegion !== null &&
     value.geography === "region" &&
-    value.regionId === suggestedRegion;
+    value.regionIds.length === 1 &&
+    value.regionIds[0] === suggestedRegion;
 
   return (
     <div className="ob-card">
@@ -667,20 +677,20 @@ function AudienceStep({
 
         {value.geography === "region" && (
           <div className="ob-field" style={{ marginTop: "var(--space-3)" }}>
-            <label htmlFor="ob-region">Region</label>
-            <select
+            <label htmlFor="ob-region">Regions</label>
+            <MultiSelect
               id="ob-region"
-              value={value.regionId}
-              onChange={(e) => onChange({ ...value, regionId: e.target.value })}
-            >
-              {regions
-                .filter((r) => r.id !== "finland")
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-            </select>
+              label="Regions"
+              values={value.regionIds}
+              options={regions.map((r) => ({
+                value: r.id,
+                label: regionDisplayName(r),
+              }))}
+              placeholder="Select one or more regions"
+              searchPlaceholder="Search regions"
+              emptyText="No matching regions."
+              onChange={(regionIds) => onChange({ ...value, regionIds })}
+            />
             {prefilled && (
               <p className="ob-sub" style={{ margin: "var(--space-2) 0 0" }}>
                 Based on your website. Change it if that&rsquo;s not right.
@@ -691,20 +701,19 @@ function AudienceStep({
 
         {value.geography === "city" && (
           <div className="ob-field" style={{ marginTop: "var(--space-3)" }}>
-            <label htmlFor="ob-city">City</label>
-            <input
+            <label htmlFor="ob-city">Cities</label>
+            <MultiSelect
               id="ob-city"
-              type="text"
-              list="ob-cities"
-              value={value.city}
-              placeholder="Start typing…"
-              onChange={(e) => onChange({ ...value, city: e.target.value })}
+              label="Cities"
+              values={value.cities}
+              options={cities.map((city) => ({ value: city, label: city }))}
+              placeholder="Select one or more cities"
+              searchPlaceholder="Search cities"
+              emptyText="No matching cities."
+              allowCustom
+              customLabel={(q) => `Add “${q}”`}
+              onChange={(next) => onChange({ ...value, cities: next })}
             />
-            <datalist id="ob-cities">
-              {cities.map((city) => (
-                <option key={city} value={city} />
-              ))}
-            </datalist>
           </div>
         )}
       </fieldset>
@@ -853,6 +862,10 @@ function BrandStep({
         signals?.contentTypeAlternatives ??
         []
     );
+    const geo = resolveLocationPicks(
+      signals?.geographicSignal || "",
+      signals?.geographicAlternatives ?? []
+    );
     onBusinessChange({
       businessName: signals?.businessName || brand?.companyName || "",
       industry: content.contentType || signals?.industry || "",
@@ -860,7 +873,8 @@ function BrandStep({
       contentTypeAlternatives: content.contentTypeAlternatives,
       productsOrServices:
         signals?.productsOrServices || brand?.description || "",
-      location: signals?.geographicSignal || "",
+      location: geo.location,
+      locationAlternatives: geo.locationAlternatives,
     });
     onCategoryChange(
       signals?.category ?? categoryFromContentType(content.contentType)
@@ -975,12 +989,17 @@ function BrandStep({
 
         <div className="ob-field full">
           <label htmlFor="ob-loc">Where you operate</label>
-          <input
+          <LocationSelect
             id="ob-loc"
-            type="text"
             value={business.location}
-            onChange={(e) => set("location", e.target.value)}
-            placeholder="A city, a region, or all of Finland"
+            alternatives={business.locationAlternatives}
+            onChange={(next) =>
+              onBusinessChange({
+                ...business,
+                location: next.location,
+                locationAlternatives: next.locationAlternatives,
+              })
+            }
           />
         </div>
       </div>
@@ -1067,6 +1086,9 @@ function RecommendationStep({
       contentTypeAlternatives: business.contentTypeAlternatives,
       productsOrServices: business.productsOrServices,
       geographicSignal: business.location,
+      geographicAlternatives: business.locationAlternatives,
+      geographicKind: locationKind(business.location),
+      national: isNationalReach(business.location),
       category,
     };
   }, [analysis.signals, business, category]);

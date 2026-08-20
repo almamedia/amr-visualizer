@@ -28,11 +28,9 @@ type Phase = "input" | "brand" | "results";
 /** Onboarding goal → studio campaign goal. Onboarding speaks the advertiser's
  *  language ("drive online sales"); the studio speaks the spec library's. */
 const GOAL_FROM_BRIEF: Record<BriefGoalId, GoalId> = {
-  traffic: "awareness",
   awareness: "awareness",
-  event: "offer",
+  conversion: "offer",
   local: "awareness",
-  "online-sales": "offer",
 };
 
 const GOALS: { id: GoalId; name: string; hint: string }[] = [
