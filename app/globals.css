@@ -1,10 +1,10 @@
 /* ============================================================
-   AMR Aineistostudio — käyttöliittymän tyylit.
+   AMR Aineistostudion käyttöliittymän tyylit.
    Rakennettu AMR Design Systemin varaan (claude.ai/design,
    projekti "AMR Design System"). Tokenit on kopioitu suoraan
    lähteestä tokens/colors.css, typography.css ja spacing.css.
 
-   Moodi: A — Editorial Light. Tämä on työkalu, ei mainos:
+   Moodi: A (Editorial Light). Tämä on työkalu, ei mainos:
    lomakepainotteinen käyttöliittymä lukee paremmin vaalealla
    pohjalla, ja mainosten esikatselut istuvat neutraalille
    paperille luontevammin kuin täyskylläiselle violetille.
@@ -28,7 +28,7 @@
   --green-deeper: #146f59;
 
   /* Kontrastiturvallinen väriteksti. Vain violetti ja vihreä kantavat
-     tekstiä — oliivi ei koskaan, millään pohjalla. */
+     tekstiä. Oliivi ei koskaan, millään pohjalla. */
   --violet-on-light: var(--violet); /* 6,28:1 */
   --green-on-light: var(--green-deeper); /* brändivihreä yksin on 2,37:1 */
 
@@ -52,8 +52,8 @@
   --cta-fill: var(--violet);
   --cta-text: var(--white);
 
-  /* Validoinnin tilat. Design systemissä ei ole virhevärille tokenia
-     — paletti on violetti, vihreä ja oliivi. Vihreä = hyväksytty,
+  /* Validoinnin tilat. Design systemissä ei ole virhevärille tokenia:
+     paletti on violetti, vihreä ja oliivi. Vihreä = hyväksytty,
      violetti = vaatii huomiota. Oliivia ei käytetä tekstiin. */
   --state-pass: var(--green-on-light);
   --state-pass-bg: var(--green-20);
@@ -459,8 +459,8 @@ button.tiny {
   text-transform: none;
 }
 
-/* Rajan ylitys ei estä tallennusta — teksti leikataan renderöinnissä
-   sanarajalta — mutta käyttäjän on nähtävä se etukäteen. */
+/* Rajan ylitys ei estä tallennusta, sillä teksti leikataan renderöinnissä
+   sanarajalta, mutta käyttäjän on nähtävä se etukäteen. */
 .counter.over {
   color: var(--violet);
   font-weight: var(--weight-bold);
@@ -611,8 +611,8 @@ label + .hint {
   margin-top: 2px;
 }
 
-/* Pienoismainos: sama pinorakenne kuin oikeassa bannerissa — nimi, otsikko,
-   painike — jotta värien keskinäinen suhde näkyy oikein. */
+/* Pienoismainos: sama pinorakenne kuin oikeassa bannerissa: nimi, otsikko,
+   painike, jotta värien keskinäinen suhde näkyy oikein. */
 .cpreview-ad {
   padding: 16px;
   min-height: 118px;
@@ -1053,7 +1053,7 @@ label + .hint {
   margin-top: var(--space-3);
 }
 
-/* "Seuraava askel" on oma osionsa, ei jatketta aineistoille — selvä
+/* "Seuraava askel" on oma osionsa, ei jatketta aineistoille, ja selvä
    pystyväli erottaa sen edellä olevasta aineistoruudukosta. */
 .handoff {
   border-color: var(--green);

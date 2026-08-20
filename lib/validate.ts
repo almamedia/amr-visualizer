@@ -40,7 +40,7 @@ export interface ContrastInput {
  *  ei ole, ja sama raja pitää mainoksen luettavana myös pienessä koossa. */
 const MIN_TEXT_CONTRAST = 4.5;
 /** Painike saa erottua pohjasta pienemmällä erolla kuin teksti, mutta
- *  sen pitää erottua — muuten CTA sulautuu pintaan. */
+ *  sen pitää erottua, tai CTA sulautuu pintaan. */
 const MIN_CTA_SEPARATION = 1.8;
 
 function ratio(a: string, b: string): number {
@@ -85,7 +85,7 @@ function contrastChecks(c: ContrastInput): ValidationCheck[] {
 
 /**
  * Validoi staattisen display-aineiston speksikirjastoa vasten.
- * Puhdasta Node-koodia — ei AI:ta, ei verkkokutsuja.
+ * Puhdasta Node-koodia: ei AI:ta, ei verkkokutsuja.
  */
 export function validateStatic(input: StaticInput): ValidationResult {
   const fmt = getFormat(input.formatId);
@@ -117,7 +117,7 @@ export function validateStatic(input: StaticInput): ValidationResult {
       "filetype",
       "Alman hyväksymä tiedostomuoto",
       fmt.acceptedTypes.includes(input.fileType),
-      `${input.fileType.toUpperCase()} — hyväksytään ${fmt.acceptedTypes
+      `${input.fileType.toUpperCase()}, hyväksytään ${fmt.acceptedTypes
         .filter((t) => specs.global.acceptedStaticFormats.includes(t))
         .join(", ")
         .toUpperCase()}`
@@ -275,6 +275,28 @@ function charsetCheck(copy: CopyVariant): ValidationCheck {
   );
 }
 
+/**
+ * Poistaa pitkät viivat (U+2014 ja U+2013) mainostekstistä. Malli kirjoittaa
+ * niitä englannin tapaan, mutta suomalaisessa mainoksessa ne näyttävät
+ * vierailta, katkaisevat lukemisen ja kuluttavat merkkirajaa.
+ *
+ * Ajetaan renderöintipolussa fitCopyToLimits-funktiossa, joten yksikään
+ * valmis aineisto ei voi sisältää pitkää viivaa riippumatta siitä, tuliko
+ * teksti mallilta, varapohjista vai käyttäjän kynästä.
+ */
+export function stripLongDashes(s: string): string {
+  return (s ?? "")
+    // Lukuväli säilyy välinä, mutta yhdysmerkillä: "10 - 15" muuttuu "10-15".
+    .replace(/(\d)\s*[\u2013\u2014]\s*(\d)/g, "$1-$2")
+    .replace(/^\s*[\u2013\u2014]\s*/, "")
+    .replace(/\s*[\u2013\u2014]\s*$/, "")
+    // Muualla viiva korvautuu pilkulla, joka on suomen luonteva vastine.
+    .replace(/\s*[\u2013\u2014]\s*/g, ", ")
+    .replace(/\s+([,.:;!?])/g, "$1")
+    .replace(/,\s*,/g, ",")
+    .trim();
+}
+
 /** Leikkaa copyn speksin rajoihin ennen renderöintiä. */
 export function fitCopyToLimits(
   copy: CopyVariant,
@@ -282,9 +304,9 @@ export function fitCopyToLimits(
 ): CopyVariant {
   return {
     id: copy.id,
-    headline: truncate(copy.headline, limits.headline),
-    body: truncate(copy.body, limits.body),
-    cta: truncate(copy.cta, limits.cta),
+    headline: truncate(stripLongDashes(copy.headline), limits.headline),
+    body: truncate(stripLongDashes(copy.body), limits.body),
+    cta: truncate(stripLongDashes(copy.cta), limits.cta),
   };
 }
 

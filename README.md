@@ -61,19 +61,19 @@ Käyttöliittymä noudattaa AMR Design Systemiä (claude.ai/design, projekti
 "AMR Design System"). Tokenit on kopioitu lähteestä tiedostoon
 [globals.css](app/globals.css):
 
-- **Värit** — violetti `#9F248F` ja vihreä `#28B78F` tasavertaisina
+- **Värit**: violetti `#9F248F` ja vihreä `#28B78F` tasavertaisina
   pääväreinä, oliivi `#C2C83D` vain pienenä korostuksena. Sävytetyt
   neutraalit: paperi `#FAF6F8`, muste `#1C0A19`.
-- **Typografia** — Archivo, ladataan `next/font/google`-optimoinnilla.
+- **Typografia**: Archivo, ladataan `next/font/google`-optimoinnilla.
   Painoista käytössä 800 (otsikot, painikkeet, labelit) ja 400
   (leipäteksti); design system sallii sommitelmaan enintään kaksi.
-- **Muodot** — 8 pikselin ruudukko, pillinmuotoiset painikkeet
+- **Muodot**: 8 pikselin ruudukko, pillinmuotoiset painikkeet
   (`radius: 999px`), korttien 16 px pyöristys, 7 px signature-väripalkki.
-- **Moodi** — A (Editorial Light). Työkalu on lomakepainotteinen, joten
+- **Moodi**: A (Editorial Light). Työkalu on lomakepainotteinen, joten
   vaalea paperipohja lukee paremmin kuin Mode B:n täyskylläinen violetti,
   ja mainosten esikatselut istuvat neutraalille pohjalle luontevammin.
 
-Design systemissä ei ole tokenia virhevärille — paletti on violetti,
+Design systemissä ei ole tokenia virhevärille: paletti on violetti,
 vihreä ja oliivi. Validoinnin tilat on siksi ratkaistu paletin sisällä:
 **vihreä = hyväksytty**, **violetti = vaatii huomiota**. Oliivia ei
 käytetä tekstiin, koska design system kieltää sen kaikilla pohjilla.
@@ -91,7 +91,7 @@ arvoja ei ole muualla.
 Mitat ja maksimipainot ovat Alman virallisia arvoja
 ([aineisto-ohjeet](https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/),
 haettu 2026-08-11). **Tekstirajat ovat tämän työkalun omia**, luettavuuteen
-perustuvia rajoja — Alma määrittelee merkkirajat vain Performance Native
+perustuvia rajoja: Alma määrittelee merkkirajat vain Performance Native
 -formaatille.
 
 Demossa käytössä olevat kolme ensisijaista kokoa (`"primary": true`):
@@ -102,8 +102,8 @@ Demossa käytössä olevat kolme ensisijaista kokoa (`"primary": true`):
 | Pystyparaati | 300×600 | 300 kt |
 | Performance Display | 600×600 | 300 kt |
 
-Kirjastossa on lisäksi Mobiiliparaati, Boksi, Megaparaati ja Tapetti valmiina —
-uuden koon saa mukaan vaihtamalla `primary`-lipun päälle.
+Kirjastossa on lisäksi Mobiiliparaati, Boksi, Megaparaati ja Tapetti valmiina.
+Uuden koon saa mukaan vaihtamalla `primary`-lipun päälle.
 
 ### Bannerin kaksi moodia
 
@@ -151,7 +151,7 @@ sellaisenaan, kun `copyVariants` tulee pyynnön mukana.
   validointiin että zip-paketin LUEMINUT-tiedostoon.
 
   Huomaa arviointia varten, että mainosten otsikot, leipätekstit ja CTA:t ovat
-  kokonaan mallin kirjoittamia — merkintävelvollisuus koskisi todennäköisimmin
+  kokonaan mallin kirjoittamia, ja merkintävelvollisuus koskisi todennäköisimmin
   juuri tekstiä, ei rajattuja kuvia.
 - **HTML5**: tiedostot ovat itsenäisiä (kuvat ja tyylit upotettuina), eivät
   lataa mitään ulkopuolelta, eivät käytä jQueryä. Validointi tarkistaa nämä.
@@ -160,7 +160,7 @@ sellaisenaan, kun `copyVariants` tulee pyynnön mukana.
   niissä on oma otsikko, oma CTA ja usein eri verkko-osoite, ja rajaus
   katkaisee tekstin kesken. Ennen mallia ajetaan ilmainen suodatin, joka
   pudottaa `/ad/`-polun ja tiedostonimet, joissa on banner, mainos tai promo.
-  Jos yksikään kuva ei kelpaa, mainos rakentuu typografialla — se on parempi
+  Jos yksikään kuva ei kelpaa, mainos rakentuu typografialla, mikä on parempi
   kuin väärä kuva.
 - **Kontrasti**: jokaisesta aineistosta mitataan tekstin kontrasti pohjaa
   vasten (vaatimus 4,5:1) ja se, erottuuko CTA pohjasta ja kantaako se itse
@@ -171,6 +171,13 @@ sellaisenaan, kun `copyVariants` tulee pyynnön mukana.
   mutta ovat rikkinäistä suomea. Generointi suodattaa tällaiset variaatiot ja
   pyytää uudet; lisäksi jokainen aineisto saa erillisen merkistötarkistuksen,
   joka tekee mahdollisen lipsahduksen näkyväksi.
+- **Pitkät viivat**: malli kirjoittaa englannin tapaan ajatusviivoja
+  (U+2014, U+2013), jotka näyttävät suomalaisessa mainoksessa vierailta ja
+  kuluttavat merkkirajaa. Copy-ohje kieltää ne, ja `stripLongDashes`
+  ([validate.ts](lib/validate.ts)) siivoaa loput renderöintipolussa
+  `fitCopyToLimits`-funktiossa. Viiva korvautuu pilkulla, lukuvälissä
+  yhdysmerkillä. Tarkistus osuu myös käyttäjän itse kirjoittamaan tekstiin,
+  joten yksikään aineisto ei voi sisältää pitkää viivaa.
 - **Logon näkyvyys**: sivustoilla on usein negaversio logosta
   (`alma-logo-white.png`), joka latautuu moitteettomasti mutta katoaa vaalealle
   pohjalle. Logon pikselit mitataan ja kontrasti lasketaan taustaväriä vasten;
@@ -196,7 +203,7 @@ molempiin suuntiin tietoja menettämättä:
   valittu variaatio, jotta vastaanottajan ei tarvitse arvata mikä kolmesta
   versiosta oli oikea. Kaikki variaatiot saa mukaan A/B-testausta varten.
 - **Polun päässä** on toimituskortti. Toimitusta ei ole kytketty, ja se
-  sanotaan käyttäjälle suoraan — placeholder ei teeskentele toimivaa.
+  sanotaan käyttäjälle suoraan: placeholder ei teeskentele toimivaa.
 
 ## Tiedetyt rajoitukset
 
@@ -206,7 +213,7 @@ molempiin suuntiin tietoja menettämättä:
   Nimeen ja polkuun perustuva suodatin karsii ilmeisimmät mainokset, mutta
   kuvien katselu vaatii mallin. Käyttäjä pudottaa huonon kuvan brändikortissa.
 - **Kirjoitusvirheitä ei tunnisteta koneellisesti.** Merkistötarkistus nappaa
-  kyrilliset lipsahdukset, mutta tavallinen kirjoitusvirhe menee läpi —
+  kyrilliset lipsahdukset, mutta tavallinen kirjoitusvirhe menee läpi:
   testeissä malli kirjoitti kerran `lempipiazzasi` (pitäisi olla
   `lempipizzasi`). Siksi tekstit ovat muokattavissa tulosnäkymässä; lue ne
   läpi ennen latausta.

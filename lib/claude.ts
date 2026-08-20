@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ScrapeResult } from "./scrape";
 import type { BrandCard, CopyVariant, GoalId, TextLimits } from "./types";
 import { getGoal } from "./specs";
+import { stripLongDashes } from "./validate";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -50,7 +51,7 @@ async function askJson<T>(
     text = firstText(res);
   } catch (e) {
     if (!isBadRequest(e)) throw e;
-    // Malli ei tue effortia — aja ilman.
+    // Malli ei tue effortia, joten ajetaan ilman.
     const res = await c.messages.create(base);
     text = firstText(res);
   }
@@ -138,7 +139,7 @@ Ohjeet:
 - toimiala: yksi tai kaksi sanaa, esim. "Parturi-kampaamo".
 - logoUrl: valitse ehdokkaista todennäköisin logo, tai null jos yksikään ei vakuuta. Suosi kuvaa, jonka polussa tai altissa lukee logo, ennen faviconia. Mainos rakentuu vaalealle pohjalle, joten vältä negaversioita: jos tiedostonimessä on white, valko, nega, invert tai light, valitse jokin muu ehdokas silloin kun sellainen on tarjolla.
 - colors: valitse VAIN annetuista väriehdokkaista. Älä keksi uusia hex-arvoja: ehdokaslista on poimittu sivun omista tyyleistä, ja listan ulkopuolinen väri ei ole yrityksen väri, vaikka se tuntuisi sopivalta.
-  Tunnistettavin brändiväri on lähes aina kylläinen ja keskisävyinen. Valkoinen, musta ja harmaat eivät ole brändivärejä, vaikka ne esiintyisivät sivulla ylivoimaisesti useimmin — ne ovat pohja ja teksti.
+  Tunnistettavin brändiväri on lähes aina kylläinen ja keskisävyinen. Valkoinen, musta ja harmaat eivät ole brändivärejä, vaikka ne esiintyisivät sivulla ylivoimaisesti useimmin: ne ovat pohja ja teksti.
   Vaalea pastelli tai lähes valkoinen sävy ei ole brändiväri silloin kun listalla on kylläisempiä vaihtoehtoja.
   Jos listan kylläiset värit ovat saman sävyn eri kirkkauksia (esim. useita vihreitä), se sävy ON yrityksen brändiväri. Valitse siitä keskisävyinen versio primaryksi ja selvästi tummempi accentiksi.
   Roolit kertovat, mihin väri päätyy valmiissa mainoksessa:
@@ -158,7 +159,7 @@ Ohjeet:
 
   Hylkää myös kollaasit, ruutukaappaukset, kaaviot, taulukot ja tyhjät kuvituskuviot.
 
-  Valitse valokuvia: ihmisiä, tuotteita, tiloja tai työn tekemistä. Jos yksikään kuva ei kelpaa, palauta tyhjä lista — mainos rakentuu silloin typografialla ja väreillä, mikä on parempi kuin huono kuva.`;
+  Valitse valokuvia: ihmisiä, tuotteita, tiloja tai työn tekemistä. Jos yksikään kuva ei kelpaa, palauta tyhjä lista: mainos rakentuu silloin typografialla ja väreillä, mikä on parempi kuin huono kuva.`;
 
 interface BrandResponse {
   companyName: string;
@@ -189,7 +190,7 @@ ${s.logoCandidates.map((u, i) => `${i + 1}. ${u}`).join("\n") || "(ei löytynyt)
 <kuva-ehdokkaat>
 ${
   s.imageCandidates
-    .map((im, i) => `${i + 1}. ${im.url}${im.alt ? ` — alt: ${im.alt}` : ""}`)
+    .map((im, i) => `${i + 1}. ${im.url}${im.alt ? ` · alt: ${im.alt}` : ""}`)
     .join("\n") || "(ei löytynyt)"
 }
 </kuva-ehdokkaat>
@@ -244,7 +245,7 @@ ${s.text.slice(0, 5000)}
     return {
       sourceUrl: s.finalUrl,
       companyName: clean(r.companyName) || fallbackName(s),
-      description: clean(r.description) || s.metaDescription || "",
+      description: clean(r.description) || clean(s.metaDescription) || "",
       tone: clean(r.tone) || "Selkeä ja asiallinen",
       toimiala: clean(r.toimiala) || "",
       logoUrl: r.logoUrl && r.logoUrl.startsWith("http") ? r.logoUrl : null,
@@ -254,8 +255,8 @@ ${s.text.slice(0, 5000)}
         body: clean(r.fonts?.body) || "Helvetica Neue",
       },
       // Tyhjä lista on mallin tietoinen valinta, kun yksikään kuva ei kelpaa
-      // (valmiita mainoksia, ruutukaappauksia). Sitä ei ohiteta raakalistalla
-      // — typografialla rakennettu mainos on parempi kuin väärä kuva.
+      // (valmiita mainoksia, ruutukaappauksia). Sitä ei ohiteta raakalistalla,
+      // sillä typografialla rakennettu mainos on parempi kuin väärä kuva.
       images,
       warnings: s.warnings,
     };
@@ -271,14 +272,18 @@ ${s.text.slice(0, 5000)}
   }
 }
 
+/** Siistii mallin palauttaman merkkijonon. Pitkä viiva karsitaan jo tässä,
+ *  jotta käyttäjä näkee kentissä saman tekstin kuin valmiissa mainoksessa. */
 function clean(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
+  return typeof v === "string" ? stripLongDashes(v.trim()) : "";
 }
 
 function fallbackName(s: ScrapeResult): string {
   if (s.ogSiteName) return s.ogSiteName;
   const t = s.ogTitle || s.title;
-  if (t) return t.split(/[|–—-]/)[0].trim().slice(0, 60);
+  // Sivun title on usein "Yritys | Slogan" tai "Yritys - Slogan". Erottimina
+  // esiintyvät myös pitkät viivat (U+2013, U+2014), joten ne tunnistetaan.
+  if (t) return t.split(/[|\u2013\u2014-]/)[0].trim().slice(0, 60);
   try {
     // Verkkotunnuksesta nimeksi: www ja päätteet pois, alkukirjain isoksi.
     const host = new URL(s.finalUrl).hostname
@@ -302,7 +307,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const SNAP_MAX_DISTANCE = 42;
 
 /** Euklidinen etäisyys RGB-avaruudessa. Vastaa kysymykseen "onko tämä sama
- *  väri kuin jokin ehdokas" — ei yritä mallintaa havaintoa tarkemmin. */
+ *  väri kuin jokin ehdokas", eikä yritä mallintaa havaintoa tarkemmin. */
 function colorDistance(a: string, b: string): number {
   const [r1, g1, b1] = rgb(a);
   const [r2, g2, b2] = rgb(b);
@@ -414,13 +419,13 @@ function describeCandidates(cands: { color: string; count: number }[]): string {
           : l < 0.06
           ? "lähes musta"
           : "kylläinen";
-      return `${c.color} — ${c.count}× · ${kind} · ${hueName(c.color)}`;
+      return `${c.color} · ${c.count}× · ${kind} · ${hueName(c.color)}`;
     })
     .join("\n");
 }
 
 /** Sävyn nimi suomeksi. Auttaa mallia näkemään, että sivun kylläiset värit
- *  ovat saman sävyn eri kirkkauksia — silloin se sävy on brändiväri. */
+ *  ovat saman sävyn eri kirkkauksia, jolloin se sävy on brändiväri. */
 function hueName(hex: string): string {
   const [r, g, b] = rgb(hex).map((v) => v / 255);
   const max = Math.max(r, g, b);
@@ -487,7 +492,7 @@ function guessPalette(s: ScrapeResult): BrandCard["colors"] {
   // Korostusväri on painikkeen väri, joten ei riitä että se on eri kuin
   // pääväri: sen on erotuttava vaaleasta pohjasta ja kannettava luettavaa
   // tekstiä. Saman sävyn tummempi versio on tähän usein paras vaihtoehto,
-  // ja brändeillä sellainen yleensä on — aiemmin tähän valikoitui vain
+  // ja brändeillä sellainen yleensä on. Aiemmin tähän valikoitui vain
   // "jokin muu kuin primary", joka saattoi olla lukukelvoton painikkeena.
   const usableCta = (c: string) =>
     distinct(c, primary) &&
@@ -516,17 +521,17 @@ function guessPalette(s: ScrapeResult): BrandCard["colors"] {
 }
 
 function mockBrand(s: ScrapeResult): BrandCard {
-  // Puuttuvasta API-avaimesta ei varoiteta täällä — käyttöliittymä näyttää
+  // Puuttuvasta API-avaimesta ei varoiteta täällä: käyttöliittymä näyttää
   // siitä oman pysyvän huomautuksensa, eikä sitä kannata kertoa kahdesti.
   const warnings = [...s.warnings];
   return {
     sourceUrl: s.finalUrl,
     companyName: fallbackName(s),
     description:
-      s.metaDescription ||
-      s.ogDescription ||
-      s.text.slice(0, 180).trim() ||
-      "Kuvaus puuttuu — täydennä käsin.",
+      clean(s.metaDescription) ||
+      clean(s.ogDescription) ||
+      clean(s.text.slice(0, 180)) ||
+      "Kuvaus puuttuu, täydennä käsin.",
     tone: "Selkeä ja asiallinen",
     toimiala: "",
     logoUrl: s.logoCandidates[0] ?? null,
@@ -543,18 +548,23 @@ function mockBrand(s: ScrapeResult): BrandCard {
 
 // ------------------------------------------------------------------ copy
 
+/** Pitkät viivat nimetään ohjeessa merkkikoodeilla, jotta itse merkkiä ei
+ *  tarvitse kirjoittaa tähän tiedostoon. */
+const LONG_DASHES = "\u2014 ja \u2013";
+
 const COPY_SYSTEM = `Olet suomalainen mainostoimittaja. Kirjoitat display-mainosten tekstit pk-yrityksille.
 
 Vastaa VAIN JSONilla, ilman selityksiä tai koodiaitoja:
 { "variants": [ { "headline": string, "body": string, "cta": string }, ... ] }
 
-Kirjoita täsmälleen 3 variaatiota, jotka eroavat toisistaan kulmaltaan — älä kirjoita samaa asiaa kolmella tavalla.
+Kirjoita täsmälleen 3 variaatiota, jotka eroavat toisistaan kulmaltaan. Älä kirjoita samaa asiaa kolmella tavalla.
 
 Ohjeet:
 - Kirjoita moitteetonta suomea. Yhdyssanat oikein, ei anglismeja, ei turhia isoja alkukirjaimia.
 - Otsikko myy hyödyn, ei ominaisuutta. Ei huutomerkkejä, ei kaikkia versaaleja.
 - Leipäteksti tukee otsikkoa yhdellä konkreettisella asialla.
 - CTA on lyhyt toimintakehotus, esim. "Varaa aika" tai "Katso valikoima". Ei pistettä lopussa.
+- Älä käytä pitkiä viivoja (${LONG_DASHES}) missään tekstissä. Erota ajatukset pilkulla, kaksoispisteellä tai pisteellä.
 - Älä keksi hintoja, lukuja, takuita tai väitteitä, joita lähdemateriaalissa ei ole.
 - Pysy merkkirajoissa. Ne ovat ehdottomia.`;
 
@@ -575,7 +585,7 @@ Toimiala: ${brand.toimiala || "ei tiedossa"}
 Mitä yritys tekee: ${brand.description}
 Äänensävy: ${brand.tone}
 
-Kampanjatavoite: ${goal.name} — ${goal.description}
+Kampanjatavoite: ${goal.name}: ${goal.description}
 CTA-tyyli: ${goal.ctaHint}
 
 Merkkirajat (ehdottomat):
@@ -637,7 +647,7 @@ function mockCopy(
     tunnettuus: [
       {
         id: "v1",
-        headline: `${name} — lähelläsi`,
+        headline: `${name} on lähelläsi`,
         body: `Tutustu siihen, mitä teemme ja miksi asiakkaamme palaavat.`,
         cta: "Tutustu meihin",
       },

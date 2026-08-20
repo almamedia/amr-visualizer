@@ -16,7 +16,7 @@ export interface BannerInput {
 
 type Layout = "wide" | "square" | "tall";
 
-/** Fonttinimien mappaus järjestelmäfontteihin — ei ulkoisia fonttilatauksia,
+/** Fonttinimien mappaus järjestelmäfontteihin. Ei ulkoisia fonttilatauksia,
  *  koska Alma laskee ulkoiset fontit tiedostokokorajaan. */
 function fontStack(name: string): string {
   const n = (name || "").toLowerCase();
@@ -79,7 +79,7 @@ const PAPER = "#ffffff";
 /**
  * Valitse luettava tekstiväri taustaa vasten. Kiinteä luminanssikynnys ei
  * riitä: keskisävyinen väri kuten kulta (luminanssi ~0,35) jäi kynnyksen
- * alle ja sai valkoisen tekstin, jonka kontrasti on vain 2,6:1 — tumma
+ * alle ja sai valkoisen tekstin, jonka kontrasti on vain 2,6:1, kun tumma
  * teksti samalla pohjalla on 6,6:1. Verrataan siis kontrastit ja valitaan
  * parempi sen sijaan että arvattaisiin kynnyksellä.
  */
@@ -113,7 +113,7 @@ export interface BannerColors {
  * Moodit tulevat AMR Design Systemistä:
  * - Editorial Light: vaalea pohja, kuva kantaa ilmeen.
  * - Bold: täyskylläinen brändiväri pohjana. Ilman kuvaa tämä on selvästi
- *   parempi — valkoinen banneri katoaa julkaisijan valkoiselle sivulle,
+ *   parempi, sillä valkoinen banneri katoaa julkaisijan valkoiselle sivulle,
  *   ja tyhjä pinta näyttää keskeneräiseltä.
  */
 export function resolveBannerColors(
@@ -235,7 +235,7 @@ export function renderBannerHtml(input: BannerInput): string {
   const labelSize = Math.max(8, Math.round(9 * Math.max(1, scale * 0.8)));
 
   // Merkintä voi osua valokuvan päälle, joten se saa oman taustalaatan
-  // mainoksen omasta taustavärista — luettava sekä kuvan että pohjan päällä.
+  // mainoksen omasta taustavärista, jotta se on luettava kuvan ja pohjan päällä.
   const aiLabelBg = rgba(bg, 0.88);
   const aiLabelText = rgba(text, 0.75);
 
@@ -281,7 +281,7 @@ export function renderBannerHtml(input: BannerInput): string {
   }
   /* Terävä raja kuvan ja tekstipinnan välillä. Häivytystä kokeiltiin, mutta
      poimittujen valokuvien tummat alueet muuttuivat sen läpi harmaaksi
-     suttaumaksi — selkeä jako on ennustettavampi mielivaltaisilla kuvilla.
+     suttaumaksi, ja selkeä jako on ennustettavampi mielivaltaisilla kuvilla.
      Signature-väripalkkia ei piirretä värilliselle pohjalle: design system
      rajaa sen Mode A:han, eikä se erotu täyskylläiseltä pinnalta. */
   .media::after{
@@ -403,7 +403,7 @@ export function renderBannerHtml(input: BannerInput): string {
 <script>
 /* Sovita teksti laatikkoon. Merkkiraja on arvio: suomen yhdyssanat vaihtelevat
    pituudeltaan rajusti, ja sama merkkimäärä taittuu eri tavalla eri kokoihin.
-   Siksi typografia joustaa sen sijaan että teksti katkaistaisiin kesken —
+   Siksi typografia joustaa sen sijaan että teksti katkaistaisiin kesken:
    katkaisu pudottaisi kokonaisen sanan yhden merkin ylityksen takia.
    Ajetaan synkronisesti ennen load-tapahtumaa, joten kuvakaappaus näkee
    lopullisen asettelun. */
@@ -449,7 +449,7 @@ export function renderBannerHtml(input: BannerInput): string {
     }
   }
 
-  /* Otsikko joustaa ensin — se vie eniten tilaa ja kestää kutistamisen
+  /* Otsikko joustaa ensin, sillä se vie eniten tilaa ja kestää kutistamisen
      parhaiten. Leipäteksti vasta jos se ei riitä. */
   shrink(head, 0.6, 12);
   var body = document.querySelector('p.body');
@@ -460,5 +460,5 @@ export function renderBannerHtml(input: BannerInput): string {
 </html>`;
 }
 
-/** Animaation kokonaiskesto sekunteina — validointi vertaa tätä speksin rajaan. */
+/** Animaation kokonaiskesto sekunteina. Validointi vertaa tätä speksin rajaan. */
 export const ANIMATION_DURATION_SECONDS = 9;

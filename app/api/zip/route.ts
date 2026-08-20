@@ -68,7 +68,7 @@ function buildReadme(assets: GeneratedAsset[], companyName: string): string {
   const lines: string[] = [];
   const allPass = assets.every((a) => a.validation.pass);
 
-  lines.push(`AMR Aineistostudio — ${companyName}`);
+  lines.push(`AMR Aineistostudio · ${companyName}`);
   lines.push("=".repeat(60));
   lines.push("");
   lines.push(`Luotu: ${new Date().toISOString().slice(0, 16).replace("T", " ")}`);

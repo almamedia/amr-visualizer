@@ -12,7 +12,12 @@ import {
   resolveBannerColors,
   ANIMATION_DURATION_SECONDS,
 } from "./templates/banner";
-import { fitCopyToLimits, validateStatic, validateHtml5 } from "./validate";
+import {
+  fitCopyToLimits,
+  stripLongDashes,
+  validateStatic,
+  validateHtml5,
+} from "./validate";
 import { mapLimit } from "./concurrency";
 import type {
   BrandCard,
@@ -28,7 +33,7 @@ const MAX_LOGO_BYTES = 80 * KB;
 /**
  * Kuinka suuren osan logon näkyvistä pikseleistä on erotuttava pohjasta.
  * Logo on usein piirretty valkoisen levyn päälle, jolloin suurin osa
- * pinnasta on pohjan väriä ja vain teksti erottuu — 5 % riittää siihen,
+ * pinnasta on pohjan väriä ja vain teksti erottuu. 5 % riittää siihen,
  * että logo on tunnistettavissa, ja pudottaa silti aidon negaversion,
  * jossa erottuvia pikseleitä ei ole lainkaan.
  */
@@ -44,8 +49,8 @@ export interface GenerateOptions {
   formatIds?: string[];
   /** Oletuksena ensimmäinen HTML5-formaatti. */
   html5FormatId?: string;
-  /** Käyttäjän muokkaamat tekstit. Kun nämä annetaan, Claudea ei kutsuta —
-   *  aineistot renderöidään suoraan annetuilla teksteillä. */
+  /** Käyttäjän muokkaamat tekstit. Kun nämä annetaan, Claudea ei kutsuta,
+   *  vaan aineistot renderöidään suoraan annetuilla teksteillä. */
   copyVariants?: CopyVariant[];
 }
 
@@ -57,7 +62,7 @@ export interface GenerateResult {
   warnings: string[];
 }
 
-/** Tiukimmat merkkirajat valituista formaateista — copy mahtuu näin joka kokoon. */
+/** Tiukimmat merkkirajat valituista formaateista, jotta copy mahtuu joka kokoon. */
 function tightestLimits(formatIds: string[]): TextLimits {
   return formatIds
     .map((id) => getFormat(id).textLimits)
@@ -79,8 +84,15 @@ export async function generateAssets(
   const html5FormatId = opts.html5FormatId ?? specs.html5Formats[0].id;
 
   const limits = tightestLimits(formatIds);
+  // Käyttäjän kirjoittamat tekstit siivotaan jo tässä, jotta muokkauskentät
+  // näyttävät saman tekstin kuin valmis mainos.
   const copyVariants = opts.copyVariants?.length
-    ? opts.copyVariants.map((v, i) => ({ ...v, id: `v${i + 1}` }))
+    ? opts.copyVariants.map((v, i) => ({
+        id: `v${i + 1}`,
+        headline: stripLongDashes(v.headline),
+        body: stripLongDashes(v.body),
+        cta: stripLongDashes(v.cta),
+      }))
     : await generateCopy(opts.brand, opts.goalId, limits);
 
   // Logo ja pääkuva ladataan kerran ja jaetaan kaikille aineistoille.
@@ -95,12 +107,12 @@ export async function generateAssets(
   if (logoRaw && approxBytes(logoRaw) > MAX_LOGO_BYTES) {
     logoDataUri = null;
     warnings.push(
-      "Logotiedosto on liian suuri mainoksiin, joten niissä näkyy yrityksen nimi tekstinä. Voit ladata kevyemmän logon edellisessä vaiheessa."
+      "Logo on liian suuri, joten mainoksissa näkyy yrityksen nimi tekstinä. Voit ladata kevyemmän logon."
     );
   }
   if (opts.brand.logoUrl && !logoRaw) {
     warnings.push(
-      "Logoa ei saatu ladattua, joten mainoksissa näkyy yrityksen nimi tekstinä. Voit ladata logon itse edellisessä vaiheessa."
+      "Logoa ei saatu ladattua, joten mainoksissa näkyy yrityksen nimi tekstinä. Voit ladata logon itse."
     );
   }
 
@@ -120,13 +132,13 @@ export async function generateAssets(
       // Yleisin syy on vaalea logo vaalealla pohjalla. "Negaversio" on
       // painoalan sana, jota pk-yrittäjän ei tarvitse tuntea.
       warnings.push(
-        "Logosi on liian vaalea erottumaan mainoksen pohjasta, joten mainoksissa näkyy yrityksen nimi tekstinä. Jos sinulla on tummempi versio logosta, lataa se edellisessä vaiheessa."
+        "Logo on liian vaalea erottumaan mainoksen pohjasta, joten mainoksissa näkyy yrityksen nimi tekstinä. Lataa tummempi logo, jos sinulla on."
       );
     }
   }
   if (activeImage && !imageRaw) {
     warnings.push(
-      "Valittua kuvaa ei saatu ladattua, joten mainokset tehtiin ilman kuvaa. Voit ladata oman kuvan edellisessä vaiheessa."
+      "Kuvaa ei saatu ladattua, joten mainokset tehtiin ilman sitä. Voit ladata oman kuvan."
     );
   }
 
@@ -256,7 +268,7 @@ export async function generateAssets(
     warnings.push(
       `${failed.length} mainos${
         failed.length === 1 ? "" : "ta"
-      } vaatii huomiota. Merkitsimme ne alle — avaa mainoksen kohdalta "Mikä vaatii huomiota".`
+      } vaatii huomiota. Katso merkinnät mainosten kohdalta.`
     );
   }
 

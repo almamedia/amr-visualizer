@@ -20,8 +20,9 @@ const GOALS: { id: GoalId; name: string; hint: string }[] = [
 
 /**
  * Värien roolit siinä järjestyksessä, jossa ne vaikuttavat valmiiseen
- * mainokseen. Kuvaukset kertovat mihin väri päätyy — pelkkä "Korostus" ei
- * kerro ensikertalaiselle, että kyse on painikkeen väristä.
+ * mainokseen. Kuvaukset kertovat mihin väri päätyy: pelkkä "Korostus" ei
+ * kerro ensikertalaiselle, että kyse on painikkeen väristä. Roolikuvaus on
+ * yhden rivin mittainen, jotta viiden värin lista pysyy silmäiltävänä.
  * Roolit vastaavat lib/templates/banner.ts:n resolveBannerColors-logiikkaa.
  */
 const COLOR_ROLES: {
@@ -32,27 +33,27 @@ const COLOR_ROLES: {
   {
     key: "primary",
     label: "Pääväri",
-    role: "Yrityksen nimi mainoksessa. Myös mainoksen pohja, jos mainos tehdään ilman kuvaa.",
+    role: "Yrityksen nimi, ja pohja kuvattomassa mainoksessa.",
   },
   {
     key: "accent",
     label: "Painikkeen väri",
-    role: "Mainoksen painike ja kuvan reunaviiva.",
+    role: "Painike ja kuvan reunaviiva.",
   },
   {
     key: "text",
     label: "Tekstin väri",
-    role: "Otsikko ja leipäteksti kuvallisessa mainoksessa.",
+    role: "Otsikko ja leipäteksti.",
   },
   {
     key: "background",
     label: "Pohjaväri",
-    role: "Mainoksen pohja silloin, kun mainoksessa on kuva.",
+    role: "Pohja kuvallisessa mainoksessa.",
   },
   {
     key: "secondary",
     label: "Toinen väri",
-    role: "Varaväri pohjalle, jos pääväri ei sovi pohjaksi. Näkyy harvoin.",
+    role: "Varaväri pohjalle. Näkyy harvoin.",
   },
 ];
 
@@ -197,7 +198,7 @@ export default function Page() {
   }
 
   /** Palaa edelliseen vaiheeseen tiedot tallella. "Takaisin" kutsui aiemmin
-   *  resetiä, jolloin osoite ja koko analyysi katosivat — käyttäjä odottaa
+   *  resetiä, jolloin osoite ja koko analyysi katosivat. Käyttäjä odottaa
    *  palaavansa, ei aloittavansa alusta. */
   function back(to: Phase) {
     setError(null);
@@ -209,20 +210,21 @@ export default function Page() {
     [assets, activeVariant]
   );
 
+  const activeCopy = variants.find((v) => v.id === activeVariant);
+
   const allPass = assets.length > 0 && assets.every((a) => a.validation.pass);
 
   return (
     <div className="wrap">
       <header className="masthead">
-        {/* Logo: pieni, vasemmalla, tukee otsikkoa — ei koskaan sankari.
+        {/* Logo: pieni, vasemmalla, tukee otsikkoa, ei koskaan sankari.
             Musta versio, koska pohja on vaalea paperi. */}
         <img className="logo" src="/alma-logo-black.png" alt="Alma" />
         <div>
           <h1>Aineistostudio</h1>
           <p>
-            Anna verkkosivusi osoite. Teemme siitä valmiit mainokset, jotka
-            täyttävät Alman vaatimukset — et tarvitse mainostoimistoa etkä
-            kuvankäsittelytaitoja.
+            Verkkosivustasi valmiit mainokset, jotka täyttävät Alman
+            vaatimukset.
           </p>
         </div>
       </header>
@@ -239,9 +241,9 @@ export default function Page() {
 
       {!aiEnabled && (
         <div className="notice warn">
-          <strong>Tekoäly ei ole nyt käytössä.</strong> Mainokset syntyvät
-          silti: värit ja kuvat luetaan suoraan sivultasi ja tekstit tulevat
-          valmiista pohjista. Tulos on karkeampi, ja voit muokata kaiken itse.
+          <strong>Tekoäly ei ole nyt käytössä.</strong> Värit ja kuvat luetaan
+          sivultasi, tekstit tulevat valmiista pohjista. Voit muokata kaiken
+          itse.
           <span className="devhint">
             Kehittäjälle: lisää <code>ANTHROPIC_API_KEY</code> tiedostoon{" "}
             <code>.env.local</code> ja käynnistä palvelin uudelleen.
@@ -263,9 +265,8 @@ export default function Page() {
             <span className="eyebrow">Vaihe 1</span>
             <h2>Verkkosivun osoite</h2>
             <p className="sub">
-              Luemme sivultasi logon, värit ja kuvat. Näytämme ne sinulle
-              seuraavassa vaiheessa, ja voit korjata mitä tahansa ennen kuin
-              mainokset tehdään.
+              Luemme sivultasi logon, värit ja kuvat. Voit korjata ne
+              seuraavassa vaiheessa.
             </p>
 
             <div className="field">
@@ -353,15 +354,14 @@ export default function Page() {
               </h2>
               <p className="sub">
                 {brand.companyName} · {assets.length} mainosta ·{" "}
-                {variants.length} tekstiehdotusta. Jokainen mainos on tehty
-                Alman vaatimaan kokoon, ja tarkistimme ne puolestasi.
+                {variants.length} tekstiehdotusta. Kaikki tarkistettu Alman
+                vaatimuksia vasten.
               </p>
 
               <div className="field">
                 <label>Valitse tekstiehdotus</label>
                 <p className="muted hint">
-                  Kirjoitimme kolme erilaista ehdotusta. Valitse se, joka kuulostaa
-                  eniten sinun yritykseltäsi — voit myös muokata sitä alla.
+                  Valitse sopivin. Voit muokata sitä alla.
                 </p>
                 <div className="goals">
                   {variants.map((v, i) => (
@@ -381,8 +381,17 @@ export default function Page() {
                 </div>
               </div>
 
+              {/* Avain sisältää tekstin, joten luonnos nollautuu kun
+                  palvelimelta palaa siistitty versio (esim. pitkä viiva
+                  pilkuksi). Muuten kenttä näyttäisi eri tekstin kuin
+                  valmis mainos. */}
               <CopyEditor
-                variant={variants.find((v) => v.id === activeVariant)}
+                key={
+                  activeCopy
+                    ? `${activeCopy.id}:${activeCopy.headline}|${activeCopy.body}|${activeCopy.cta}`
+                    : "none"
+                }
+                variant={activeCopy}
                 limits={limits}
                 busy={busy === "generate"}
                 onSave={handleCopyEdit}
@@ -398,10 +407,7 @@ export default function Page() {
                     aria-pressed={!zipAll}
                   >
                     Vain valitsemani teksti
-                    <small>
-                      {shown.length} mainosta. Suositus: vastaanottaja näkee
-                      heti, mikä on oikea versio.
-                    </small>
+                    <small>{shown.length} mainosta. Suositeltu.</small>
                   </button>
                   <button
                     type="button"
@@ -410,10 +416,7 @@ export default function Page() {
                     aria-pressed={zipAll}
                   >
                     Kaikki kolme tekstiä
-                    <small>
-                      {assets.length} mainosta, jos haluat vertailla mikä
-                      teksti toimii parhaiten.
-                    </small>
+                    <small>{assets.length} mainosta vertailuun.</small>
                   </button>
                 </div>
               </div>
@@ -458,15 +461,14 @@ export default function Page() {
 
           {/* Polun pää: ilman tätä käyttäjä jää yksin zip-tiedoston kanssa
               juuri kun kiinnostus on korkeimmillaan. Toimitusta ei ole
-              kytketty, ja se sanotaan suoraan — ei teeskennellä toimivaa. */}
+              kytketty, ja se sanotaan suoraan: ei teeskennellä toimivaa. */}
           <div className="card handoff">
             <div className="card-bar green" />
             <div className="card-body">
               <span className="eyebrow">Seuraava askel</span>
-              <h2>Mainokset ovat valmiit — mitä nyt?</h2>
+              <h2>Mitä nyt?</h2>
               <p className="sub">
-                Mainoksesi täyttävät Alman vaatimukset ja ovat valmiita
-                julkaistavaksi. Seuraavaksi ne lähetetään Almalle ja sovitaan,
+                Seuraavaksi mainokset lähetetään Almalle. Siellä sovitaan,
                 missä ja milloin ne näkyvät.
               </p>
 
@@ -478,11 +480,9 @@ export default function Page() {
 
               {delivered && (
                 <div className="notice" style={{ marginTop: 16 }}>
-                  <strong>Tämä on demon paikanvaraus.</strong> Toimitusta ei ole
-                  kytketty: tuotannossa tästä avautuisi aineistojen lähetys ja
-                  kampanjan varaus, tai ne siirtyisivät suoraan
-                  kampanjanhallintaan. Lataa toistaiseksi zip-paketti ja
-                  toimita se sovittua kautta.
+                  <strong>Tämä on demon paikanvaraus.</strong> Toimitusta ei
+                  ole kytketty. Lataa zip-paketti ja toimita se sovittua
+                  kautta.
                 </div>
               )}
             </div>
@@ -522,7 +522,7 @@ function BrandEditor({
   busy: boolean;
   onGenerate: () => void;
   onBack: () => void;
-  /** Onko aineistoja jo olemassa — silloin tarjotaan paluu niihin. */
+  /** Onko aineistoja jo olemassa. Silloin tarjotaan paluu niihin. */
   hasResults: boolean;
   onForward: () => void;
 }) {
@@ -604,9 +604,8 @@ function BrandEditor({
         <span className="eyebrow">Vaihe 2</span>
         <h2>Tarkista yrityksesi tiedot</h2>
         <p className="sub">
-          Nämä tiedot luimme sivultasi. Korjaa mitä tahansa, mikä on väärin —
-          mainokset tehdään näillä tiedoilla. Kun tiedot näyttävät oikeilta,
-          paina alhaalla &rdquo;Tee mainokset&rdquo;.
+          Luimme nämä sivultasi. Korjaa tarvittaessa, sillä mainokset tehdään
+          näillä tiedoilla.
         </p>
 
         <div className="brand-grid">
@@ -617,7 +616,7 @@ function BrandEditor({
               <img src={brand.logoUrl} alt="Logo" />
             ) : (
               <span style={{ color: "#888", fontSize: 13 }}>
-                Ei logoa — käytetään nimeä tekstinä
+                Ei logoa, käytetään nimeä tekstinä
               </span>
             )}
           </div>
@@ -675,8 +674,7 @@ function BrandEditor({
                 onChange={(e) => set("tone", e.target.value)}
               />
               <p className="muted hint">
-                Ohjaa mainostekstien sävyä, esim. &rdquo;Rento ja
-                mutkaton&rdquo;.
+                Esim. &rdquo;Rento ja mutkaton&rdquo;.
               </p>
             </div>
             <div style={{ flex: 1 }}>
@@ -696,8 +694,7 @@ function BrandEditor({
       <div className="field" style={{ marginTop: 20 }}>
         <label>Yrityksesi värit</label>
         <p className="muted hint">
-          Poimimme nämä sivultasi. Jokainen väri tekee mainoksessa eri asian —
-          napauta väriruutua vaihtaaksesi sen. Esikatselu päivittyy heti.
+          Poimimme nämä sivultasi. Napauta väriruutua vaihtaaksesi värin.
         </p>
 
         <div className="colorroles">
@@ -756,12 +753,10 @@ function BrandEditor({
       <div className="field">
         <label>
           Kuvat ({enabledCount} käytössä
-          {enabledCount === 0 ? " — mainokset tehdään ilman kuvaa" : ""})
+          {enabledCount === 0 ? ", mainokset tehdään ilman kuvaa" : ""})
         </label>
         <p className="muted hint">
-          Mainoksissa käytetään pääkuvaa. Voit vaihtaa sen tai ladata omia
-          kuvia — oma valokuva toimii mainoksessa usein paremmin kuin sivulta
-          poimittu.
+          Mainoksissa käytetään pääkuvaa. Oma valokuva toimii usein parhaiten.
         </p>
 
         {uploadError && (
@@ -826,9 +821,8 @@ function BrandEditor({
 
         {brand.images.length === 0 && (
           <p className="muted" style={{ marginTop: "var(--space-2)" }}>
-            Sivultasi ei löytynyt kuvia, jotka sopisivat mainokseen. Lataa oma
-            kuva yltä, tai jatka ilman kuvaa — teemme mainokset silloin
-            yrityksesi väreillä.
+            Sopivia kuvia ei löytynyt. Lataa oma kuva yltä tai jatka ilman:
+            teemme mainokset yrityksesi väreillä.
           </p>
         )}
       </div>
@@ -856,11 +850,11 @@ function BrandEditor({
 
       {/* Kiinnitetty toimintopalkki: brändikortti on yli kaksi ruudunkorkeutta
           pitkä, ja aiemmin "Luo aineistot" oli kokonaan näkymän ulkopuolella.
-          Ensikertalainen ei voi tietää, että sivua pitää vierittää — palkki
+          Ensikertalainen ei voi tietää, että sivua pitää vierittää, ja palkki
           pitää etenemisen aina näkyvissä. */}
       <div className="stickybar">
         <span className="stickybar-note">
-          Tiedot näyttävät oikeilta? Mainokset syntyvät noin minuutissa.
+          Mainokset valmistuvat noin minuutissa.
         </span>
         <div className="stickybar-actions">
           <button className="ghost" onClick={onBack} disabled={busy}>
@@ -884,7 +878,7 @@ function BrandEditor({
 /**
  * Näyttää, miltä valitut värit näyttävät valmiissa mainoksessa. Käyttää samaa
  * resolveBannerColors-funktiota kuin varsinainen renderöinti, joten esikatselu
- * kertoo värien todellisen lopputuloksen — myös silloin kun logiikka korvaa
+ * kertoo värien todellisen lopputuloksen, myös silloin kun logiikka korvaa
  * huonosti toimivan värin toisella. Pelkät väriruudut eivät kerro tätä:
  * käyttäjä ei voi tietää, että vaalea pääväri ei kelpaa pohjaksi.
  */
@@ -949,7 +943,7 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 /** Valokuvan pisin sivu. Suurin banneri on 1600 px leveä. */
 const PHOTO_MAX_DIM = 1600;
 /** Logo piirtyy bannerissa korkeintaan ~90 px korkeana, joten 320 riittää
- *  myös tarkoille näytöille — ja pitää HTML5-paketin painorajan alla. */
+ *  myös tarkoille näytöille ja pitää HTML5-paketin painorajan alla. */
 const LOGO_MAX_DIM = 320;
 
 async function readAsDataUri(file: File): Promise<string> {
@@ -982,7 +976,7 @@ async function fileToDataUri(
 
   const raw = await readAsDataUri(file);
 
-  // SVG:llä ei ole pikselimittoja, joten sitä ei piirretä kankaalle —
+  // SVG:llä ei ole pikselimittoja, joten sitä ei piirretä kankaalle:
   // se on jo valmiiksi kevyt ja skaalautuu itsestään.
   if (file.type === "image/svg+xml") return raw;
 
@@ -1011,7 +1005,7 @@ async function fileToDataUri(
 // ------------------------------------------------------------- odotus
 
 /** Viestit seuraavat putken todellista suoritusjärjestystä ja ajoitus on
- *  mitattu tyypillisistä ajoista. Ne kertovat mitä on menossa — eivät väitä
+ *  mitattu tyypillisistä ajoista. Ne kertovat mitä on menossa, eivät väitä
  *  tietävänsä prosentteja, joita palvelin ei raportoi. */
 const EXTRACT_STEPS = [
   { at: 0, text: "Avataan verkkosivuasi…" },
@@ -1055,8 +1049,8 @@ function ProgressNote({
 
 /**
  * Tekstien tarkistus ja korjaus ennen latausta. Merkkilaskuri näyttää
- * tiukimman rajan, jotta teksti mahtuu jokaiseen kokoon — sama sääntö, jolla
- * copy alun perin generoidaan.
+ * tiukimman rajan, jotta teksti mahtuu jokaiseen kokoon. Sama sääntö ohjaa
+ * myös alkuperäistä generointia.
  */
 function CopyEditor({
   variant,
@@ -1097,9 +1091,8 @@ function CopyEditor({
     <div className="field copy-editor">
       <label>Tarkista ja muokkaa tekstit</label>
       <p className="muted" style={{ marginTop: -2, marginBottom: 12 }}>
-        Lue tekstit läpi ennen latausta — voit muokata niitä vapaasti. Luku
-        kentän oikealla puolella kertoo, montako kirjainta teksti saa olla,
-        jotta se mahtuu myös pienimpään mainokseen.
+        Muokkaa vapaasti. Luku kertoo, montako merkkiä mahtuu pienimpään
+        mainokseen.
       </p>
 
       <div className="copy-field">
@@ -1136,8 +1129,8 @@ function CopyEditor({
           onChange={(e) => set("cta", e.target.value)}
         />
         <p className="muted hint">
-          Lyhyt kehotus mainoksen painikkeessa, esim. &rdquo;Varaa aika&rdquo;
-          tai &rdquo;Tutustu valikoimaan&rdquo;.
+          Esim. &rdquo;Varaa aika&rdquo; tai &rdquo;Tutustu
+          valikoimaan&rdquo;.
         </p>
       </div>
 
@@ -1212,7 +1205,7 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
       </div>
 
       <div className="meta">
-        {/* Otsikkona Alman tuotenimi — se on tuote, jonka asiakas Almalta
+        {/* Otsikkona Alman tuotenimi: se on tuote, jonka asiakas Almalta
             ostaa, ja sillä nimellä aineistosta puhutaan Alman kanssa.
             Arkikielinen kuvaus kertoo alle, mihin mainos sivulla päätyy. */}
         <h3>
@@ -1230,7 +1223,7 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
         </div>
 
         {/* Läpimenneet tarkistukset ovat teknistä kieltä ("Ei jQueryä"),
-            joka hämmentää enemmän kuin rauhoittaa — merkki yllä kertoo jo
+            joka hämmentää enemmän kuin rauhoittaa, ja merkki yllä kertoo jo
             olennaisen. Epäonnistuneet näytetään aina: niihin käyttäjän on
             tarkoitus reagoida. */}
         {failed.length > 0 && (
@@ -1239,7 +1232,7 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
               <li key={c.id} className="fail">
                 <span>
                   {c.label}
-                  {c.detail ? ` — ${c.detail}` : ""}
+                  {c.detail ? `: ${c.detail}` : ""}
                 </span>
               </li>
             ))}
@@ -1264,7 +1257,7 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
               <li key={c.id} className={c.pass ? "pass" : "fail"}>
                 <span>
                   {c.label}
-                  {c.detail ? ` — ${c.detail}` : ""}
+                  {c.detail ? `: ${c.detail}` : ""}
                 </span>
               </li>
             ))}

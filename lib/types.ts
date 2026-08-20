@@ -13,7 +13,7 @@ export interface DisplayFormat {
    *  samalla nimellä aineistosta puhutaan Alman kanssa. Ei koskaan korvata. */
   name: string;
   /** Lyhyt arkikielinen kuvaus siitä, mihin mainos sivulla päätyy. Tukee
-   *  tuotenimeä ensikertalaiselle — ei korvaa sitä. */
+   *  tuotenimeä ensikertalaiselle, ei korvaa sitä. */
   plainName: string;
   width: number;
   height: number;
@@ -62,7 +62,7 @@ export interface SpecLibrary {
   goals: Goal[];
 }
 
-/** Brändikortti — poimittu sivustolta, käyttäjän muokattavissa ennen generointia. */
+/** Brändikortti: poimittu sivustolta, käyttäjän muokattavissa ennen generointia. */
 export interface BrandCard {
   sourceUrl: string;
   companyName: string;

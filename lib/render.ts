@@ -19,7 +19,7 @@ async function getBrowser(): Promise<Browser> {
     const b = await g.__amrBrowser;
     if (b.isConnected()) return b;
   } catch {
-    // Käynnistys epäonnistui — yritä uudelleen puhtaalta pöydältä.
+    // Käynnistys epäonnistui, joten yritä uudelleen puhtaalta pöydältä.
   }
   g.__amrBrowser = undefined;
   return getBrowser();
@@ -27,7 +27,7 @@ async function getBrowser(): Promise<Browser> {
 
 export interface RenderResult {
   buffer: Buffer;
-  /** "png" tai "jpg" — kumpi mahtui painorajaan. */
+  /** "png" tai "jpg", kumpi mahtui painorajaan. */
   fileType: "png" | "jpg";
   bytes: number;
   /** true jos ei mahtunut rajaan edes matalimmalla laadulla. */
@@ -129,7 +129,7 @@ export async function compressImage(
         return `data:image/jpeg;base64,${buf.toString("base64")}`;
       }
     }
-    // Ei mahtunut budjettiin — parempi jättää kuva pois kuin rikkoa painoraja.
+    // Ei mahtunut budjettiin: parempi jättää kuva pois kuin rikkoa painoraja.
     return last && last.byteLength <= maxBytes * 1.35
       ? `data:image/jpeg;base64,${last.toString("base64")}`
       : null;
@@ -145,7 +145,7 @@ export async function compressImage(
  *
  * Sivustoilla on usein negaversio logosta (alma-logo-white.png), joka latautuu
  * moitteettomasti mutta katoaa vaalealle pohjalle. Pelkkä latauksen
- * onnistuminen ei siis riitä tarkistukseksi — pitää katsoa itse pikselit.
+ * onnistuminen ei siis riitä tarkistukseksi, vaan pikselit on katsottava.
  *
  * Keskiluminanssi oli tähän väärä mittari. Moni logo on piirretty valkoisen
  * levyn päälle: kotipizza.fi:n SVG alkaa koko kuvan peittävällä

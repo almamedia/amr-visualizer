@@ -36,7 +36,7 @@ export async function fetchWithTimeout(
 
 /**
  * Lataa kuva ja palauta data-URI:na. Palauttaa null jos lataus epäonnistuu,
- * kuva on liian iso tai se ei ole kuva — kutsuja jatkaa ilman kuvaa.
+ * kuva on liian iso tai se ei ole kuva. Kutsuja jatkaa ilman kuvaa.
  */
 export async function toDataUri(url: string): Promise<string | null> {
   // Käyttäjän koneelta ladattu kuva on jo data-URI. Sitä ei haeta verkosta

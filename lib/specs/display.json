@@ -1,12 +1,12 @@
 {
-  "$comment": "Alma Media display -aineisto-ohjeet. Lähde: https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/ (haettu 2026-08-11). Mitat ja maksimipainot ovat Alman virallisia arvoja. Tekstirajat ovat tämän työkalun template-tason rajoja (luettavuus annetussa koossa), eivät Alman vaatimuksia — Alma määrittelee merkkirajat vain Performance Native -formaatille.",
+  "$comment": "Alma Media display -aineisto-ohjeet. Lähde: https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/ (haettu 2026-08-11). Mitat ja maksimipainot ovat Alman virallisia arvoja. Tekstirajat ovat tämän työkalun template-tason rajoja (luettavuus annetussa koossa), eivät Alman vaatimuksia: Alma määrittelee merkkirajat vain Performance Native -formaatille.",
   "source": {
     "url": "https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/",
     "fetchedAt": "2026-08-11"
   },
   "global": {
     "aiActLabel": "Sisältö luotu tekoälyllä",
-    "$aiActComment": "Merkintä on pois päältä AMR:n päätöksellä: kuvia ei muokata vaan ainoastaan rajataan, ja tekstit käyvät läpi ihmisen tarkistuksen ennen latausta. Huomaa että mainosten otsikot, leipätekstit ja CTA:t ovat mallin kirjoittamia — jos linjaus muuttuu, riittää että tämä arvo asetetaan takaisin arvoon true, jolloin merkintä palaa sekä aineistoihin että validointiin.",
+    "$aiActComment": "Merkintä on pois päältä AMR:n päätöksellä: kuvia ei muokata vaan ainoastaan rajataan, ja tekstit käyvät läpi ihmisen tarkistuksen ennen latausta. Huomaa että mainosten otsikot, leipätekstit ja CTA:t ovat mallin kirjoittamia. Jos linjaus muuttuu, riittää että tämä arvo asetetaan takaisin arvoon true, jolloin merkintä palaa sekä aineistoihin että validointiin.",
     "requireAiActLabel": false,
     "httpsRequired": true,
     "acceptedStaticFormats": ["jpg", "png", "gif"],

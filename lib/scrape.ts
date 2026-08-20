@@ -26,7 +26,7 @@ export function normalizeUrl(input: string): string {
   const withProto = /^https?:\/\//i.test(trimmed)
     ? trimmed
     : `https://${trimmed}`;
-  // Heittää jos ei kelvollinen — kutsuja käsittelee.
+  // Heittää jos ei kelvollinen: kutsuja käsittelee.
   const u = new URL(withProto);
   if (u.protocol !== "https:" && u.protocol !== "http:") {
     throw new Error("Vain http- ja https-osoitteet ovat tuettuja.");
@@ -215,8 +215,8 @@ function findLogos($: cheerio.CheerioAPI, base: string): string[] {
   push(abs(base, $('meta[property="og:image"]').attr("content")));
 
   // Monella sivustolla on sekä tavallinen että negaversio logosta. Mainokset
-  // rakentuvat vaalealle pohjalle, joten valkoinen logo katoaisi taustaan —
-  // pudota negaversiot listan hännille.
+  // rakentuvat vaalealle pohjalle, joten valkoinen logo katoaisi taustaan.
+  // Pudotetaan negaversiot listan hännille.
   const NEGATIVE = /white|valko|nega|negative|invert|inverted|light|reverse/i;
   return out
     .sort((a, b) => Number(NEGATIVE.test(a)) - Number(NEGATIVE.test(b)))
@@ -280,7 +280,7 @@ const RGB_RE = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/gi;
 
 /**
  * Upotettujen widgettien omat tyylilohkot. Näiden värit kuuluvat Facebookille,
- * Googlelle tai evästebannerin toimittajalle — eivät mainostajalle.
+ * Googlelle tai evästebannerin toimittajalle, eivät mainostajalle.
  * kotipizza.fi:llä Facebook-SDK:n 5 kt tyylilohko toi yhdeksän sinistä
  * ehdokaslistalle ja työnsi yrityksen oman vihreän ulos kärjestä.
  */
@@ -324,7 +324,7 @@ async function findColors(
   html: string,
   rawHtml: string
 ): Promise<{ color: string; count: number }[]> {
-  // Hae muutama ensimmäinen tyylitiedosto — sieltä löytyvät CSS-muuttujat.
+  // Hae muutama ensimmäinen tyylitiedosto, sieltä löytyvät CSS-muuttujat.
   const sheets: string[] = [];
   $('link[rel="stylesheet"]').each((_, el) => {
     const u = abs(base, $(el).attr("href"));
@@ -402,7 +402,7 @@ function normalizeHex(hex: string): string | null {
 
 /** Fontit luetaan samasta syystä molemmista versioista kuin värit: hydraatio
  *  voi viedä mukanaan lohkon, jossa sivun oma typografia määritellään.
- *  Kolmannen osapuolen lohkot ohitetaan tässäkin — Facebook-upotus ehdotti
+ *  Kolmannen osapuolen lohkot ohitetaan tässäkin: Facebook-upotus ehdotti
  *  kotipizza.fi:n otsikkofontiksi omaa Lucida Grandea. */
 function findFonts(html: string, rawHtml: string): string[] {
   const out = new Set<string>();
