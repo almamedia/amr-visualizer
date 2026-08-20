@@ -198,6 +198,39 @@ molempiin suuntiin tietoja menettämättä:
 - **Polun päässä** on toimituskortti. Toimitusta ei ole kytketty, ja se
   sanotaan käyttäjälle suoraan — placeholder ei teeskentele toimivaa.
 
+## Onboarding-mikrosivusto (`/onboarding`)
+
+Studion edelle on rakennettu itsepalveluinen onboarding-polku PRD:n *AMS
+Advertising Onboarding Tool* v0.1 mukaan. Se on **englanniksi** — PRD:n v1
+rajaus — ja vie pk-yrittäjän aikeesta suositukseen alle viidessä minuutissa:
+
+```
+Welcome → URL → Brand → Goal → Timeline → Audience → Budget → Plan
+```
+
+- **Brändi vahvistetaan ensin.** Sivu luetaan, ja käyttäjälle näytetään kuka
+  hänen yrityksensä on — nimi, toimiala, mitä myydään, missä toimitaan, sekä
+  löydetty logo ja väripaletti. Vasta kun tämä on kuitattu, kysytään mitään
+  kampanjasta. Kaikki myöhempi nojaa tähän, joten se katsotaan ensin.
+- **Aineistot tehdään viimeisenä.** Onboarding ei tee luovaa työtä lainkaan.
+  Se tuottaa suunnitelman, ja mainokset syntyvät vasta sen jälkeen studiossa.
+- **Analyysi on näkyvä odotus.** PRD ajoi analyysin taustalla ja vahvisti sen
+  vasta lopussa (§7 6a) juuri odotuksen välttämiseksi. Vahvistus ensin
+  tarkoittaa, että käyttäjä odottaa kerran, brändivaiheessa. Haku käynnistyy
+  heti osoitteen lähetyksestä; 30 sekunnin jälkeen se tulkitaan
+  epäonnistuneeksi ja polku jatkuu ilman sitä.
+- **Suositus on sääntöpohjainen**, ei ML: samat vastaukset antavat aina saman
+  tuloksen ja jokainen sääntö on selitettävissä yhdellä lauseella.
+  Tekoälysignaalit vain *lisäävät* painoa — ne eivät koskaan poista kanavaa,
+  jonka käyttäjän oma vastaus toi mukaan.
+- **Numerot ovat paikanvarauksia.** Hinnat, budjettitasot, kanavien peitto ja
+  alueosuudet asuvat kansiossa `lib/onboarding/data/` — yksi tiedosto per
+  omistaja — ja jokainen näytön luku seuraa niitä. Katso `docs/task-fanout.md`.
+- **Polun päässä syntyy creative brief** (PRD Appendix B), joka siirtyy
+  studioon `sessionStorage`-avaimella `ams.creativeBrief.v1`. Studio hyppää
+  suoraan brändikorttiin: osoitetta ei kysytä kahdesti, eikä brändiä
+  analysoida uudelleen.
+
 ## Tiedetyt rajoitukset
 
 - **Video on rakentamatta.** Speksit ovat kirjastossa (`video`-lohko) ja

@@ -1,0 +1,43 @@
+{
+  "note": "Channel audience profiles (PRD Appendix B.1). Editorial context is the field that sharpens generated ad copy — it is the brief handed to the asset studio. Demographic strings and reach figures are placeholders until AMS supplies structured audience research; monthlyReach is deliberately empty rather than invented, and the UI omits the line when it is empty.",
+  "provisional": true,
+  "owner": "AMS Data / audience research",
+  "channels": [
+    {
+      "id": "iltalehti",
+      "name": "Iltalehti",
+      "whyItFits": "Finland's largest news site — the widest general audience available in one place.",
+      "ageRange": "18–65+, weighted to 25–54",
+      "genderSkew": "Balanced",
+      "incomeProfile": "Broad, mirrors the national average",
+      "editorialContext": "News and entertainment mindset. The reader is browsing, emotionally receptive, and open to discovery rather than searching for something specific.",
+      "geographicConcentration": "National, mirrors population distribution",
+      "audienceTag": "General consumers",
+      "monthlyReach": ""
+    },
+    {
+      "id": "kauppalehti",
+      "name": "Kauppalehti",
+      "whyItFits": "Finland's business title — reaches decision-makers while they are in a work mindset.",
+      "ageRange": "30–64",
+      "genderSkew": "Slight male skew",
+      "incomeProfile": "Above-average income, managers and professionals",
+      "editorialContext": "Professional, analytical mindset. The reader is evaluating business decisions and responds to substance, figures, and credibility over emotion.",
+      "geographicConcentration": "Concentrated in Helsinki-Uusimaa and other growth centres",
+      "audienceTag": "Business audience",
+      "monthlyReach": ""
+    },
+    {
+      "id": "etuovi",
+      "name": "Etuovi",
+      "whyItFits": "Finland's home marketplace — reaches people already in a moving or renovating mindset.",
+      "ageRange": "28–60",
+      "genderSkew": "Balanced",
+      "incomeProfile": "Homeowners and prospective buyers",
+      "editorialContext": "Actively searching, high intent, specific need. The reader has a task in progress and welcomes anything that helps them finish it.",
+      "geographicConcentration": "National, strongest where housing turnover is highest",
+      "audienceTag": "Homeowners and families",
+      "monthlyReach": ""
+    }
+  ]
+}

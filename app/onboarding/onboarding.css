@@ -1,0 +1,587 @@
+/* ============================================================
+   AMS Advertising Onboarding — styles.
+
+   Builds on the design tokens already defined in app/globals.css
+   (:root), so the microsite and the asset studio stay one product.
+
+   Mobile-first per PRD §9: every rule below is written for 375px
+   and widened at 720px. Card targets are at least 48px tall.
+   ============================================================ */
+
+.ob {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3) var(--space-7);
+}
+
+@media (min-width: 720px) {
+  .ob {
+    padding: var(--space-6) var(--space-4) var(--space-8);
+  }
+}
+
+.ob-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.ob-top img {
+  height: 22px;
+  width: auto;
+}
+
+/* ------------------------------------------------ progress */
+
+.ob-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.ob-progress-label {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ob-progress-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--paper-alt);
+  overflow: hidden;
+}
+
+.ob-progress-fill {
+  height: 100%;
+  background: var(--violet);
+  border-radius: var(--radius-pill);
+  transition: width var(--dur-normal) var(--ease-standard);
+}
+
+/* ------------------------------------------------ question */
+
+.ob-card {
+  background: var(--white);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+}
+
+@media (min-width: 720px) {
+  .ob-card {
+    padding: var(--space-5);
+  }
+}
+
+.ob-card + .ob-card {
+  margin-top: var(--space-4);
+}
+
+.ob-q {
+  font-size: var(--text-h3);
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-headline);
+  font-weight: var(--weight-bold);
+  margin: 0 0 var(--space-2);
+  color: var(--text-strong);
+}
+
+@media (min-width: 720px) {
+  .ob-q {
+    font-size: var(--text-h2);
+  }
+}
+
+.ob-sub {
+  color: var(--text-muted);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-small);
+}
+
+.ob-legend {
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  color: var(--text-strong);
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+
+.ob-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--space-4);
+}
+
+/* ------------------------------------------------ option cards */
+
+.ob-options {
+  display: grid;
+  gap: var(--space-2);
+}
+
+@media (min-width: 720px) {
+  .ob-options.two {
+    grid-template-columns: 1fr 1fr;
+  }
+  .ob-options.three {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.ob-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 48px;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--white);
+  color: var(--text-strong);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+
+.ob-option:hover:not(:disabled) {
+  border-color: var(--violet);
+}
+
+.ob-option.selected {
+  border-color: var(--violet);
+  background: var(--violet-20);
+}
+
+.ob-option small {
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.ob-option.selected small {
+  color: var(--violet-deep);
+}
+
+.ob-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The AI hint on a goal card: highlighted, never pre-selected. */
+.ob-option.suggested {
+  border-color: var(--green);
+}
+
+.ob-suggest {
+  margin-top: var(--space-1);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  color: var(--green-on-light);
+}
+
+/* ------------------------------------------------ coaching tip */
+
+.ob-tip {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border-left: 3px solid var(--olive);
+  background: var(--olive-20);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  font-size: var(--text-small);
+  color: var(--grey-80);
+}
+
+.ob-tip-mark {
+  font-weight: var(--weight-bold);
+  color: var(--grey-80);
+  flex: none;
+}
+
+/* ------------------------------------------------ nav */
+
+.ob-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.ob-nav button {
+  min-height: 48px;
+}
+
+.ob-linkbtn {
+  background: none;
+  border: 0;
+  padding: var(--space-2) 0;
+  min-height: 48px;
+  color: var(--violet-on-light);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------ analysis ticker */
+
+.ob-ticker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.ob-ticker .spinner {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}
+
+/* ------------------------------------------------ recommendation */
+
+.ob-rec-head {
+  margin-bottom: var(--space-4);
+}
+
+.ob-summary {
+  font-size: var(--text-lead);
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-finnish);
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.ob-channel {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+
+.ob-channel + .ob-channel {
+  margin-top: var(--space-2);
+}
+
+.ob-channel-mark {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--violet-20);
+  color: var(--violet-deep);
+  display: grid;
+  place-items: center;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-body-sz);
+}
+
+.ob-channel h4 {
+  margin: 0 0 2px;
+  font-size: var(--text-body-sz);
+  font-weight: var(--weight-bold);
+}
+
+.ob-channel p {
+  margin: 0;
+  font-size: var(--text-small);
+  color: var(--text-muted);
+}
+
+.ob-tag {
+  display: inline-block;
+  margin-top: var(--space-2);
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--paper-alt);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  color: var(--grey-80);
+}
+
+.ob-share {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  color: var(--text-muted);
+}
+
+.ob-format {
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.ob-format + .ob-format {
+  margin-top: var(--space-2);
+}
+
+.ob-format h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-body-sz);
+  font-weight: var(--weight-bold);
+}
+
+.ob-format dl {
+  margin: var(--space-2) 0 0;
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-small);
+}
+
+.ob-format dt {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+.ob-format dd {
+  margin: 0;
+}
+
+.ob-reach {
+  text-align: center;
+  padding: var(--space-4) var(--space-3);
+  background: var(--green-20);
+  border-radius: var(--radius-md);
+}
+
+.ob-reach-number {
+  font-size: var(--text-h2);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-headline);
+  line-height: var(--leading-tight);
+  color: var(--green-deeper);
+  display: block;
+}
+
+.ob-reach-label {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-small);
+  color: var(--grey-80);
+}
+
+.ob-reach-note {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.ob-notes {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ob-notes li {
+  position: relative;
+  padding-left: var(--space-4);
+  font-size: var(--text-small);
+  color: var(--grey-80);
+}
+
+.ob-notes li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: var(--violet);
+  font-weight: var(--weight-bold);
+}
+
+.ob-confirm-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+@media (min-width: 720px) {
+  .ob-confirm-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ob-confirm-grid .full {
+  grid-column: 1 / -1;
+}
+
+.ob-field label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+}
+
+.ob-field input,
+.ob-field select,
+.ob-field textarea {
+  width: 100%;
+  min-height: 48px;
+}
+
+.ob-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.ob-cta-row button,
+.ob-cta-row a button {
+  min-height: 48px;
+}
+
+.ob-email {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.ob-email input {
+  flex: 1 1 220px;
+  min-height: 48px;
+}
+
+.ob-devnote {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.ob-devnote strong {
+  color: var(--grey-80);
+}
+
+.ob-hero {
+  text-align: left;
+}
+
+.ob-hero h1 {
+  font-size: var(--text-h2);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-headline);
+  margin: 0 0 var(--space-3);
+}
+
+@media (min-width: 720px) {
+  .ob-hero h1 {
+    font-size: var(--text-h1);
+  }
+}
+
+.ob-hero p {
+  font-size: var(--text-lead);
+  line-height: var(--leading-normal);
+  color: var(--grey-80);
+  margin: 0 0 var(--space-4);
+}
+
+.ob-noaccount {
+  display: inline-block;
+  margin-top: var(--space-3);
+  font-size: var(--text-small);
+  color: var(--text-muted);
+}
+
+.ob-credibility {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-small);
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------ brand assets
+
+   Shown, not edited. The advertiser is confirming that we understood their
+   business; picking a hero image or cropping a logo is the asset studio's
+   job, and doing it twice would be worse than doing it once. */
+
+.ob-assets {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ob-assets-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.ob-logo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 68px;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+
+.ob-logo img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.ob-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.ob-swatch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ob-swatch-chip {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  flex: none;
+}
+
+.ob-swatch-label {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.92em;
+}

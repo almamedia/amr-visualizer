@@ -1,0 +1,106 @@
+{
+  "note": "Display formats offered in onboarding v1, sourced from almamedia.fi/mainostajat/aineisto-ohjeet/ (PRD §7 6d). priceEur is a placeholder — CPC for cpc formats, CPM for cpm formats — pending AMS Ad Ops pricing (Open Question 2). specFormatId links to lib/specs/display.json so the asset studio knows what to render; null means the studio cannot produce that size yet (Open Question 5).",
+  "provisional": true,
+  "owner": "AMS Ad Ops / adtech",
+  "specsUrl": "https://www.almamedia.fi/mainostajat/aineisto-ohjeet/",
+  "requirements": [
+    "Performance Display ads must show the advertiser's name and logo clearly",
+    "The entire ad must be clickable — no dead zones",
+    "Light animation is allowed, but the ad must stay click-oriented",
+    "No audio or video in Performance Display formats",
+    "All assets must be served over HTTPS"
+  ],
+  "formats": [
+    {
+      "id": "performance-display",
+      "smeName": "Pay-per-click banner",
+      "internalName": "Performance Display",
+      "dimensions": "600 × 600 px",
+      "devices": "Desktop and mobile",
+      "pricingModel": "cpc",
+      "pricingCopy": "You pay when someone clicks",
+      "bestFor": "Driving traffic and conversions — you only pay for clicks",
+      "maxFileSizeKb": 300,
+      "priceEur": 0.6,
+      "specFormatId": "performance-display"
+    },
+    {
+      "id": "performance-display-business",
+      "smeName": "Pay-per-click banner (business)",
+      "internalName": "Performance Display Business",
+      "dimensions": "600 × 600 px",
+      "devices": "Desktop and mobile",
+      "pricingModel": "cpc",
+      "pricingCopy": "You pay when someone clicks",
+      "bestFor": "Reaching business audiences across the Kauppalehti network",
+      "maxFileSizeKb": 300,
+      "priceEur": 0.9,
+      "specFormatId": "performance-display"
+    },
+    {
+      "id": "paraati",
+      "smeName": "Wide banner",
+      "internalName": "Paraati",
+      "dimensions": "980 × 400 px desktop, 600 × 600 px universal",
+      "devices": "Desktop, with a universal size for mobile",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Brand awareness and high visibility at the top of the page",
+      "maxFileSizeKb": 300,
+      "priceEur": 12,
+      "specFormatId": "paraati"
+    },
+    {
+      "id": "pystyparaati",
+      "smeName": "Tall banner",
+      "internalName": "Pystyparaati",
+      "dimensions": "300 × 600 px",
+      "devices": "Desktop",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Storytelling and a strong brand presence beside the article",
+      "maxFileSizeKb": 300,
+      "priceEur": 10,
+      "specFormatId": "pystyparaati"
+    },
+    {
+      "id": "boksi",
+      "smeName": "Square banner",
+      "internalName": "Boksi",
+      "dimensions": "600 × 500 px",
+      "devices": "Desktop",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "A versatile size that works across every channel",
+      "maxFileSizeKb": 300,
+      "priceEur": 9,
+      "specFormatId": "boksi"
+    },
+    {
+      "id": "valimainos",
+      "smeName": "Inline banner",
+      "internalName": "Välimainos",
+      "dimensions": "980 × 120 px desktop, 300 × 150 px mobile",
+      "devices": "Desktop and mobile",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Awareness and repeat exposure at a lower cost per view",
+      "maxFileSizeKb": 300,
+      "priceEur": 6,
+      "specFormatId": null
+    },
+    {
+      "id": "interscroller",
+      "smeName": "Mobile fullscreen",
+      "internalName": "Interscroller",
+      "dimensions": "768 × 1230 px or 1080 × 1920 px",
+      "devices": "Mobile only",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "High-attention mobile placements",
+      "maxFileSizeKb": 300,
+      "priceEur": 14,
+      "specFormatId": null
+    }
+  ]
+}

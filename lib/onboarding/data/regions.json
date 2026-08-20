@@ -1,0 +1,19 @@
+{
+  "note": "Regional audience split (PRD Appendix B.3). audienceShare is the fraction of a national audience reachable when the advertiser targets that region, and it caps the reach estimate. Four buckets are enough for MVP; shares below are population-directional placeholders pending AMS media-kit data.",
+  "provisional": true,
+  "owner": "AMS Data / ad ops",
+  "regions": [
+    { "id": "finland", "name": "Finland-wide", "audienceShare": 1 },
+    { "id": "helsinki-uusimaa", "name": "Helsinki-Uusimaa", "audienceShare": 0.32 },
+    { "id": "pirkanmaa", "name": "Tampere / Pirkanmaa", "audienceShare": 0.09 },
+    { "id": "varsinais-suomi", "name": "Turku / Varsinais-Suomi", "audienceShare": 0.09 },
+    { "id": "rest-of-finland", "name": "Rest of Finland", "audienceShare": 0.5 }
+  ],
+  "cityFallbackShare": 0.05,
+  "cities": [
+    "Helsinki", "Espoo", "Tampere", "Vantaa", "Oulu", "Turku", "Jyväskylä",
+    "Kuopio", "Lahti", "Pori", "Kouvola", "Joensuu", "Lappeenranta",
+    "Hämeenlinna", "Vaasa", "Seinäjoki", "Rovaniemi", "Mikkeli", "Kotka",
+    "Salo"
+  ]
+}

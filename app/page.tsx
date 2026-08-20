@@ -8,8 +8,20 @@ import type {
   GoalId,
   TextLimits,
 } from "@/lib/types";
+import { BRIEF_STORAGE_KEY } from "@/lib/onboarding/brief";
+import type { CreativeBrief, GoalId as BriefGoalId } from "@/lib/onboarding/types";
 
 type Phase = "input" | "brand" | "results";
+
+/** Onboarding tavoite → studion kampanjatavoite. Onboarding puhuu SME:n
+ *  kielellä ("drive online sales"), studio speksikirjaston kielellä. */
+const GOAL_FROM_BRIEF: Record<BriefGoalId, GoalId> = {
+  traffic: "tunnettuus",
+  awareness: "tunnettuus",
+  event: "tarjous",
+  local: "tunnettuus",
+  "online-sales": "tarjous",
+};
 
 const GOALS: { id: GoalId; name: string; hint: string }[] = [
   { id: "tunnettuus", name: "Tunnettuus", hint: "Tee itsesi tunnetuksi" },
@@ -30,10 +42,48 @@ export default function Page() {
   const [zipAll, setZipAll] = useState(false);
   const [delivered, setDelivered] = useState(false);
 
+  /** Onboarding-mikrosivustolta tullut brief. Kun tämä on olemassa, sivua ei
+   *  tarvitse analysoida uudelleen — brändikortti tuli mukana. */
+  const [brief, setBrief] = useState<CreativeBrief | null>(null);
+  /** Suositellut formaatit briefistä. Tyhjänä käytetään speksien oletuksia. */
+  const [formatIds, setFormatIds] = useState<string[] | undefined>(undefined);
+
   const [busy, setBusy] = useState<null | "extract" | "generate" | "zip">(null);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [aiEnabled, setAiEnabled] = useState(true);
+
+  /** Poimitaan onboardingin jättämä brief kerran latauksessa ja hypätään
+   *  suoraan brändikortin tarkistukseen: käyttäjä on jo antanut osoitteen. */
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(BRIEF_STORAGE_KEY);
+      if (raw) sessionStorage.removeItem(BRIEF_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+
+    try {
+      const incoming = JSON.parse(raw) as CreativeBrief;
+      setBrief(incoming);
+      setGoal(GOAL_FROM_BRIEF[incoming.goal.id] ?? "tunnettuus");
+
+      const wanted = incoming.formats
+        .map((f) => f.specFormatId)
+        .filter((id): id is string => Boolean(id));
+      if (wanted.length) setFormatIds(wanted);
+
+      if (incoming.brand) {
+        setBrand(incoming.brand);
+        setUrl(incoming.brand.sourceUrl);
+        setPhase("brand");
+      }
+    } catch {
+      // Rikkinäinen brief ei saa estää studion normaalia käyttöä.
+    }
+  }, []);
 
   async function handleExtract(e: React.FormEvent) {
     e.preventDefault();
@@ -68,7 +118,7 @@ export default function Page() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ brand, goalId: goal }),
+        body: JSON.stringify({ brand, goalId: goal, formatIds }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Generointi epäonnistui.");
@@ -97,7 +147,7 @@ export default function Page() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ brand, goalId: goal, copyVariants: next }),
+        body: JSON.stringify({ brand, goalId: goal, copyVariants: next, formatIds }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Päivitys epäonnistui.");
@@ -207,6 +257,17 @@ export default function Page() {
             Kehittäjälle: lisää <code>ANTHROPIC_API_KEY</code> tiedostoon{" "}
             <code>.env.local</code> ja käynnistä palvelin uudelleen.
           </span>
+        </div>
+      )}
+
+      {/* Onboardingista tultiin valmiin suosituksen kanssa: kerrotaan mitä
+          on jo päätetty, jotta käyttäjä ei ihmettele mistä tiedot tulivat. */}
+      {brief && (
+        <div className="notice">
+          <strong>Jatketaan suosituksestasi.</strong> Tavoite:{" "}
+          {brief.goal.label}. Suositellut aineistokoot:{" "}
+          {brief.formats.map((f) => f.smeName).join(", ")}. Brändikortti on
+          poimittu valmiiksi — tarkista se ja jatka.
         </div>
       )}
 

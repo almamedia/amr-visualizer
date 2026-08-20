@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ScrapeResult } from "./scrape";
 import type { BrandCard, CopyVariant, GoalId, TextLimits } from "./types";
 import { getGoal } from "./specs";
+import type { BusinessSignals } from "./onboarding/types";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -549,4 +550,108 @@ function mockCopy(
     body: v.body.slice(0, limits.body),
     cta: v.cta.slice(0, limits.cta),
   }));
+}
+
+// ------------------------------------------- onboarding: business signals
+
+/**
+ * Onboarding microsite (PRD §7 step 1): read business intelligence off the
+ * scraped site so the recommendation can be sharpened. Returns null whenever
+ * the answer would be guesswork — no key, sparse page, or a bad response —
+ * and the flow falls back to rule-based logic without telling the user.
+ */
+
+/** Below this much visible text the page is a splash or login wall. */
+const MIN_SIGNAL_TEXT = 200;
+
+const SIGNALS_SYSTEM = `You read a scraped Finnish business website and extract structured facts about the business for an advertising recommendation engine.
+
+Return ONLY JSON:
+{
+  "businessName": string,
+  "industry": string,
+  "category": "real-estate" | "b2b-professional" | "ecommerce" | "local-services" | "other",
+  "summary": string,
+  "productsOrServices": string,
+  "geographicSignal": string,
+  "ecommerce": boolean,
+  "national": boolean,
+  "audienceSignals": string[],
+  "confidence": number
+}
+
+Rules:
+- Write every string in English, even though the site is likely Finnish.
+- "summary" is one plain sentence a business owner would recognise as their own.
+- "geographicSignal" is the city or region the site says it serves, or "" if the site does not say.
+- "national" is true only if the site claims to serve customers across Finland.
+- "ecommerce" is true only if you see a cart, a shop, or product pages with prices.
+- "audienceSignals" are short phrases the site uses about who it serves, e.g. ["families", "professionals"]. Empty array if none.
+- "confidence" is 0 to 1: how sure you are the above is right. Score low when the page is thin, generic, or mostly navigation.
+- Never invent a business name, a location, or a claim that is not on the page.`;
+
+export async function extractSignals(
+  s: ScrapeResult
+): Promise<BusinessSignals | null> {
+  if (!hasApiKey()) return null;
+  if ((s.text?.trim().length ?? 0) < MIN_SIGNAL_TEXT) return null;
+
+  const user = `Website: ${s.finalUrl}
+
+<title>${s.title}</title>
+<og-site-name>${s.ogSiteName}</og-site-name>
+<meta-description>${s.metaDescription}</meta-description>
+<og-description>${s.ogDescription}</og-description>
+
+<page-text>
+${s.text.slice(0, 6000)}
+</page-text>`;
+
+  try {
+    const r = await askJson<Partial<BusinessSignals>>(
+      SIGNALS_SYSTEM,
+      user,
+      1200,
+      "low"
+    );
+    return normalizeSignals(r);
+  } catch {
+    return null;
+  }
+}
+
+const CATEGORIES = new Set([
+  "real-estate",
+  "b2b-professional",
+  "ecommerce",
+  "local-services",
+  "other",
+]);
+
+function normalizeSignals(r: Partial<BusinessSignals>): BusinessSignals | null {
+  const businessName = clean(r.businessName);
+  if (!businessName) return null;
+
+  const category = CATEGORIES.has(String(r.category))
+    ? (r.category as BusinessSignals["category"])
+    : "other";
+
+  const confidence = Number(r.confidence);
+
+  return {
+    businessName,
+    industry: clean(r.industry),
+    category,
+    summary: clean(r.summary),
+    productsOrServices: clean(r.productsOrServices),
+    geographicSignal: clean(r.geographicSignal),
+    ecommerce: Boolean(r.ecommerce),
+    national: Boolean(r.national),
+    audienceSignals: Array.isArray(r.audienceSignals)
+      ? r.audienceSignals.map(clean).filter(Boolean).slice(0, 6)
+      : [],
+    confidence: Number.isFinite(confidence)
+      ? Math.min(1, Math.max(0, confidence))
+      : 0,
+  };
 }
