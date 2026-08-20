@@ -41,6 +41,14 @@ export interface GenerateOptions {
   /** Copy the user has edited. When given, Claude is not called — the assets
    *  are rendered straight from this text. */
   copyVariants?: CopyVariant[];
+  /**
+   * Landing page for the HTML5 assets. Defaults to the site the brand was read
+   * from. Static assets do not need it — the adserver makes those clickable —
+   * but an HTML5 tag carries its own link or the ad is dead on arrival.
+   */
+  clickUrl?: string;
+  /** Adserver click macro placed before the landing page, e.g. "${CLICK_URL}". */
+  clickMacro?: string;
 }
 
 export interface GenerateResult {
@@ -210,6 +218,8 @@ export async function generateAssets(
       imageDataUri: imagesByFormat.get(h5Base.id) ?? null,
       logoDataUri,
       animated: true,
+      clickUrl: opts.clickUrl ?? opts.brand.sourceUrl ?? null,
+      clickMacro: opts.clickMacro,
     });
     const bytes = Buffer.byteLength(html, "utf8");
 

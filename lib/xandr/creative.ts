@@ -106,6 +106,13 @@ export function buildTagCreative(
  */
 export const TAG_SIZE_WARN_BYTES = 200 * 1024;
 
+/**
+ * Xandr replaces this with its click tracker. An HTML5 tag must carry it in
+ * front of the landing page or the click is never counted — and on a
+ * pay-per-click format, an uncounted click is an unbilled one.
+ */
+export const XANDR_CLICK_MACRO = "${CLICK_URL}";
+
 export async function createCreative(
   input: CreativeInput,
   advertiser?: number

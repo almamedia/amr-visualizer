@@ -12,6 +12,19 @@ export interface BannerInput {
   logoDataUri: string | null;
   /** Add the CSS animations (the HTML5 version). */
   animated: boolean;
+  /**
+   * Where the ad clicks through to. Null renders no link, which is right for
+   * the static path: those are screenshotted and the adserver supplies the
+   * click itself. An HTML5 tag has to carry its own click-through, because
+   * nothing wraps it — without this the ad renders and does nothing.
+   */
+  clickUrl?: string | null;
+  /**
+   * Prefix the adserver swaps for its click tracker, e.g. "${CLICK_URL}" on
+   * Xandr. Placed before the landing page so the click is counted before the
+   * redirect. Omitted for previews, where the macro would be dead text.
+   */
+  clickMacro?: string;
 }
 
 type Layout = "wide" | "square" | "tall";
@@ -194,6 +207,18 @@ export function renderBannerHtml(input: BannerInput): string {
 
   const hasImage = Boolean(imageDataUri);
 
+  // The whole ad is one link, so there are no dead zones. Static renders pass
+  // no URL: they are screenshotted, and the adserver attaches the click to the
+  // hosted image. An HTML5 tag gets a real anchor, prefixed with the
+  // adserver's click macro so the click is tracked before the redirect.
+  const href = input.clickUrl
+    ? `${input.clickMacro ?? ""}${input.clickUrl}`
+    : null;
+  const adTag = href ? "a" : "div";
+  const adAttrs = href
+    ? ` href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer"`
+    : "";
+
   // With no image the text gets the whole surface, so it may grow into it.
   // Otherwise a large empty area is left and the message reads as thin.
   const fill = hasImage ? 1 : 1.24;
@@ -267,6 +292,10 @@ export function renderBannerHtml(input: BannerInput): string {
     display:flex;flex-direction:${flexDir};
     cursor:pointer;
     overflow:hidden;
+    /* The whole surface is the link — Alma requires no dead zones — so the
+       anchor must not colour or underline the text it wraps. */
+    text-decoration:none;
+    color:inherit;
   }
   .media{
     flex:0 0 ${mediaPct}%;
@@ -380,7 +409,7 @@ export function renderBannerHtml(input: BannerInput): string {
 </style>
 </head>
 <body>
-  <div class="ad">
+  <${adTag} class="ad"${adAttrs}>
     ${mediaBlock}
     <div class="content">
       ${
@@ -399,7 +428,7 @@ export function renderBannerHtml(input: BannerInput): string {
         ? `<div class="aiact">${escapeHtml(aiActLabel)}</div>`
         : ""
     }
-  </div>
+  </${adTag}>
 <script>
 /* Fit the text to its box. A character limit is only an estimate: word lengths
    vary wildly, and the same character count wraps differently at different

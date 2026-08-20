@@ -13,6 +13,7 @@ import { renderBannerHtml } from "../lib/templates/banner";
 import { renderToImage, closeBrowser } from "../lib/render";
 import { getFormat, getHtml5Format } from "../lib/specs";
 import { bookCampaign, bookingConfigSummary } from "../lib/xandr/book";
+import { XANDR_CLICK_MACRO } from "../lib/xandr/creative";
 import type { BrandCard, CopyVariant, GeneratedAsset } from "../lib/types";
 
 const book = process.argv.includes("--book");
@@ -93,7 +94,11 @@ async function buildAssets(): Promise<GeneratedAsset[]> {
     imageDataUri: null,
     logoDataUri: null,
     animated: true,
+    clickUrl: "https://www.almamedia.fi/",
+    clickMacro: XANDR_CLICK_MACRO,
   });
+  const anchor = /<a class="ad" href="([^"]+)"/.exec(html);
+  console.log("html5 click-through:", anchor ? anchor[1] : "MISSING");
   assets.push({
     id: `${h5.id}-a`,
     formatId: h5.id,
