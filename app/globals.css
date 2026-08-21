@@ -513,12 +513,27 @@ button.tiny {
 .swatch input[type="color"] {
   width: 44px;
   height: 44px;
-  border: 2px solid var(--border-subtle);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
   background: none;
   padding: 2px;
   cursor: pointer;
   flex: none;
+}
+
+.swatch input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.swatch input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+}
+
+.swatch input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
 }
 
 .swatch-info {
@@ -547,15 +562,21 @@ button.tiny {
 
 /* Genuine live previews, not mockups: they call the same renderBannerHtml()
    used for the finished assets, so a colour edit shows exactly what it will
-   look like in both banner modes (see lib/templates/banner.ts). */
+   look like in both banner modes (see lib/templates/banner.ts).
+   The card is NOT stretched to fill the grid: the iframe inside renders a
+   fixed-pixel document (the same fixed canvas real asset generation needs),
+   so stretching the card would stretch the iframe's box past that canvas —
+   the content stays pinned at its true size while the root background bleeds
+   across the leftover space. Sizing the card to its content avoids that. */
 .color-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
 
 .color-preview-card {
+  display: inline-block;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -575,9 +596,6 @@ button.tiny {
 
 .color-preview-card iframe {
   display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 280 / 165;
   border: 0;
 }
 
