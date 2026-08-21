@@ -48,17 +48,42 @@ function regionModifier(share: number): number {
   return 0.55 + 0.45 * share;
 }
 
-/** Which goals reward which format (PRD §7 6d "Recommendation logic"). */
-const FORMATS_BY_GOAL: Record<GoalId, string[]> = {
-  awareness: ["paraati", "pystyparaati"],
-  conversion: ["performance-display"],
-  local: ["performance-display"],
+/**
+ * Paraati leads every recommendation, whatever the goal and whatever the
+ * budget. 980 x 400 is the size the campaign is actually shown in, so a plan
+ * without one is a plan with nothing to put on a page. lib/generate.ts renders
+ * it regardless; this makes the plan say so rather than quietly producing a
+ * size the advertiser was never shown.
+ */
+const LEAD_FORMAT_ID = "paraati";
+
+/**
+ * The second format, by goal. All CPM, like the lead: a line item carries one
+ * revenue type, so a plan that mixes a CPM format with a CPC one cannot be
+ * bought as a single buy.
+ */
+const COMPANION_BY_GOAL: Record<GoalId, string> = {
+  awareness: "suurtaulu",
+  conversion: "boksit",
+  local: "boksit",
 };
 
-const FORMAT_RATIONALE: Record<GoalId, string> = {
-  awareness: "A large, visible placement at the top of the page builds recognition fast.",
-  conversion: "You pay per click, so every euro goes to someone ready to visit or buy.",
-  local: "Pay-per-click keeps a local budget accountable: no click, no cost.",
+/** Why the lead format suits this goal. */
+const LEAD_RATIONALE: Record<GoalId, string> = {
+  awareness:
+    "A large, visible placement at the top of the page builds recognition fast.",
+  conversion:
+    "The biggest surface on the page, so your offer is read before anyone scrolls past it.",
+  local:
+    "The size people notice first — the one that makes a local name familiar.",
+};
+
+/** Why the second format earns its place next to the lead. */
+const COMPANION_RATIONALE: Record<string, string> = {
+  suurtaulu:
+    "A tall placement beside the article stays on screen while people read.",
+  boksit:
+    "A compact size that follows people across mobile and desktop, for repeat exposure.",
 };
 
 /** When the user says "I'll decide later", the goal picks the duration. */
@@ -210,38 +235,30 @@ function pickChannels(
 
 // -------------------------------------------------------------- formats
 
-function pickFormats(
-  answers: FlowAnswers,
-  channels: RecommendedChannel[]
-): RecommendedFormat[] {
+function pickFormats(answers: FlowAnswers): RecommendedFormat[] {
   const goal = answers.goal ?? "awareness";
-  const ids = [...FORMATS_BY_GOAL[goal]];
 
-  // A business audience gets the business version of the click format.
-  const businessLed = channels[0]?.channel.id === "kauppalehti";
-  if (businessLed) {
-    const i = ids.indexOf("performance-display");
-    if (i >= 0) ids[i] = "performance-display-business";
-    else if (!ids.includes("performance-display-business"))
-      ids.unshift("performance-display-business");
+  const formats: RecommendedFormat[] = [
+    { format: getFormatOption(LEAD_FORMAT_ID), rationale: LEAD_RATIONALE[goal] },
+  ];
+
+  // Budget modifier (PRD §7 6d): a small budget is not spread across two
+  // formats. It used to be swapped onto pay-per-click instead, which quietly
+  // replaced the goal's plan rather than trimming it — an awareness campaign on
+  // the starter tier came back recommending a click format and nothing else.
+  const smallBudget =
+    channelBudgetCap(answers) === 1 && answers.budget.tier !== "medium";
+  if (smallBudget) return formats;
+
+  const companionId = COMPANION_BY_GOAL[goal];
+  if (companionId && companionId !== LEAD_FORMAT_ID) {
+    formats.push({
+      format: getFormatOption(companionId),
+      rationale: COMPANION_RATIONALE[companionId] ?? LEAD_RATIONALE[goal],
+    });
   }
 
-  // Budget modifier (PRD §7 6d): a small budget stays on pay-per-click, where
-  // a first-time advertiser only pays for results.
-  const smallBudget = channelBudgetCap(answers) === 1 &&
-    answers.budget.tier !== "medium";
-  const filtered = smallBudget
-    ? ids.filter((id) => getFormatOption(id).pricingModel === "cpc")
-    : ids;
-
-  const finalIds = filtered.length
-    ? filtered
-    : [businessLed ? "performance-display-business" : "performance-display"];
-
-  return finalIds.slice(0, 2).map((id) => ({
-    format: getFormatOption(id),
-    rationale: FORMAT_RATIONALE[goal],
-  }));
+  return formats;
 }
 
 // ---------------------------------------------------------------- reach
@@ -371,7 +388,7 @@ export function recommend(
 ): Recommendation {
   const s = usableSignals(signals);
   const channels = pickChannels(answers, s);
-  const formats = pickFormats(answers, channels);
+  const formats = pickFormats(answers);
   const reach = estimateReach(answers, formats, s);
   const tier = getBudgetTier(answers.budget.tier);
 
