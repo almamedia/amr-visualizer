@@ -55,8 +55,28 @@ export interface SpecLibrary {
   };
   formats: DisplayFormat[];
   html5Formats: Html5Format[];
-  video: Record<string, unknown>;
+  video: VideoSpec;
   goals: Goal[];
+}
+
+export interface VideoSpec {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  maxFileSizeMb: number;
+  maxDurationSeconds: number;
+  acceptedTypes: string[];
+  outstream: {
+    maxFileSizeMb: number;
+    maxDurationSeconds: number;
+    codec: string;
+    videoBitrateKbps: { min: number; max: number };
+    audioBitrateKbps: number;
+    frameRates: number[];
+    loudnessLufs: number;
+    aspectRatios: string[];
+  };
 }
 
 /** Brand card — read off the website, editable before assets are generated. */

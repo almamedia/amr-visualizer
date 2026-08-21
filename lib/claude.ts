@@ -361,28 +361,55 @@ function sat(hex: string): number {
   return max === 0 ? 0 : (max - min) / max;
 }
 
+function colorDistance(a: string, b: string): number {
+  const aa = rgb(a);
+  const bb = rgb(b);
+  const distance = Math.sqrt(
+    (aa[0] - bb[0]) ** 2 +
+      (aa[1] - bb[1]) ** 2 +
+      (aa[2] - bb[2]) ** 2
+  );
+  return distance / Math.sqrt(3 * 255 ** 2);
+}
+
 /** Guess a palette from the colour candidates alone, when Claude is absent. */
 function guessPalette(s: ScrapeResult): BrandCard["colors"] {
-  const cands = s.colorCandidates.map((c) => c.color).filter((c) => HEX.test(c));
+  const cands = s.colorCandidates.filter((c) => HEX.test(c.color));
 
-  // Brand colour: the most saturated, neither too light nor too dark, weighted by frequency.
+  // Brand colour: saturated, usable as a ground, and genuinely recurring on
+  // the site. Frequency matters here: a framework's one-off status colour
+  // must not beat the colour used throughout the actual brand stylesheet.
   const scored = cands
-    .map((c, i) => ({
-      c,
+    .map(({ color, count }, i) => ({
+      c: color,
+      count,
       score:
-        sat(c) * 2 +
-        (lum(c) > 0.06 && lum(c) < 0.72 ? 0.8 : 0) -
+        sat(color) * 2 +
+        (lum(color) > 0.06 && lum(color) < 0.72 ? 0.8 : 0) +
+        Math.log2(count + 1) * 0.35 -
         i * 0.02,
     }))
     .filter((x) => sat(x.c) > 0.25)
     .sort((a, b) => b.score - a.score);
 
   const primary = scored[0]?.c ?? "#1f4fd8";
-  const secondary = scored[1]?.c ?? primary;
-  const accent = scored.find((x) => x.c !== primary)?.c ?? primary;
+  // A secondary colour has to be a comparably strong signal. Otherwise a
+  // Bootstrap alert colour or a near-identical shade of the primary becomes
+  // part of what is effectively a one-colour brand.
+  const strongSecondary = scored.find(
+    (x) =>
+      x.c !== primary &&
+      x.count >= (scored[0]?.count ?? 0) * 0.4 &&
+      colorDistance(x.c, primary) >= 0.18
+  );
+  const secondary = strongSecondary?.c ?? primary;
+  const accent = strongSecondary?.c ?? primary;
 
-  const lights = cands.filter((c) => lum(c) > 0.82);
-  const darks = cands.filter((c) => lum(c) < 0.12);
+  const lights = cands.map((c) => c.color).filter((c) => lum(c) > 0.82);
+  const darks = cands
+    .filter((c) => lum(c.color) < 0.12)
+    .sort((a, b) => sat(a.color) - sat(b.color) || b.count - a.count)
+    .map((c) => c.color);
 
   return {
     primary,

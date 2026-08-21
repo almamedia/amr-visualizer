@@ -100,7 +100,7 @@ export async function scrape(rawUrl: string): Promise<ScrapeResult> {
     text: visibleText.slice(0, TEXT_LIMIT),
     logoCandidates: await verifyReachable(findLogos($, finalUrl)),
     imageCandidates: findImages($, finalUrl),
-    colorCandidates: await findColors($, finalUrl, html),
+    colorCandidates: await findColors($, finalUrl),
     fontCandidates: findFonts(html),
     usedPlaywright,
     warnings,
@@ -270,29 +270,139 @@ function findImages(
 
 const HEX_RE = /#([0-9a-f]{6}|[0-9a-f]{3})\b/gi;
 const RGB_RE = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/gi;
+const NON_BRAND_STYLESHEET =
+  /(?:custom-twitter-feeds|social|share|facebook|linkedin|youtube|instagram)/i;
+
+function stylesheetPriority(url: string, id: string, index: number): number {
+  let score = -index * 0.01;
+
+  // A site's own theme bundle is much more useful than whichever WordPress
+  // plugin happened to enqueue its stylesheet first.
+  if (/\/themes?\//i.test(url)) score += 100;
+  if (/(?:^|[-_/])(main|site|brand|theme|style)(?:[-_.?/]|$)/i.test(`${id} ${url}`)) {
+    score += 25;
+  }
+
+  // These can still be selected when a page has nothing better, but they
+  // should not push the actual theme bundle outside the fetch limit.
+  if (/(?:\/plugins?\/|\/wp-includes\/|fontawesome|google-fonts|\/npm\/|vendor)/i.test(url)) {
+    score -= 40;
+  }
+
+  return score;
+}
+
+/**
+ * WordPress injects its whole Gutenberg preset palette into every page, even
+ * when none of those colours are used. Treating those declarations as brand
+ * signals makes the stock vivid orange and amber beat the site's real palette.
+ *
+ * Remove only the declarations. A preset colour written directly into a
+ * page-specific rule or inline style is still counted normally.
+ */
+function stripNonBrandColorSources(css: string): string {
+  const withoutFrameworkPalettes = css.replace(
+    /--wp(?:(?:--preset--)|(?:-(?:admin|components?)-))[\w-]+\s*:\s*[^;}]+;?/gi,
+    ""
+  );
+
+  // Sharing widgets bring the identity colours of Twitter/X, Facebook,
+  // LinkedIn and others into nearly every corporate site. They describe the
+  // destination service, not the company whose page is being analysed.
+  return withoutFrameworkPalettes.replace(
+    /([^{}]+)\{([^{}]*)\}/g,
+    (rule, selector: string) =>
+      /(?:^|[-_.#\s])(social|share|twitter|facebook|linkedin|youtube|instagram)(?:[-_.#:\s]|$)/i.test(
+        selector
+      )
+        ? ""
+        : rule
+  );
+}
+
+const DYNAMIC_PSEUDO =
+  /:(?:active|any-link|autofill|checked|default|disabled|enabled|focus|focus-visible|focus-within|fullscreen|hover|indeterminate|invalid|link|optional|placeholder-shown|read-only|read-write|required|target|user-invalid|valid|visited)(?:\([^)]*\))?/gi;
+
+/**
+ * Turn an interactive selector into the element selector Cheerio can match.
+ * `.button:hover::before` still proves that `.button` is present; the hover
+ * state and generated pseudo-element do not exist in the static DOM.
+ */
+function staticSelector(selector: string): string {
+  return selector
+    .replace(/^[\s}]+/, "")
+    .replace(/::[\w-]+(?:\([^)]*\))?/g, "")
+    .replace(DYNAMIC_PSEUDO, "")
+    .trim();
+}
+
+function selectorIsUsed($: cheerio.CheerioAPI, selectorList: string): boolean {
+  return selectorList.split(",").some((raw) => {
+    const selector = staticSelector(raw);
+    if (
+      !selector ||
+      selector.startsWith("@") ||
+      /^(?:from|to|\d+(?:\.\d+)?%)$/i.test(selector)
+    ) {
+      return false;
+    }
+
+    try {
+      return $(selector).length > 0;
+    } catch {
+      // Browser-only or vendor selectors are not evidence that a rule is used.
+      return false;
+    }
+  });
+}
+
+/** Return declarations only from CSS rules whose selector exists in the DOM. */
+function findAppliedCss(
+  $: cheerio.CheerioAPI,
+  css: string
+): string {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const declarations: string[] = [];
+  const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+
+  for (const match of withoutComments.matchAll(ruleRe)) {
+    if (selectorIsUsed($, match[1])) declarations.push(match[2]);
+  }
+
+  return declarations.join("\n");
+}
 
 async function findColors(
   $: cheerio.CheerioAPI,
-  base: string,
-  html: string
+  base: string
 ): Promise<{ color: string; count: number }[]> {
   let css = "";
+  let inlineCss = "";
 
   $("style").each((_, el) => {
     css += "\n" + $(el).text();
   });
 
   // Fetch the first few stylesheets — that is where the CSS variables live.
-  const sheets: string[] = [];
-  $('link[rel="stylesheet"]').each((_, el) => {
+  const sheets: { url: string; priority: number }[] = [];
+  $('link[rel="stylesheet"]').each((index, el) => {
     const u = abs(base, $(el).attr("href"));
-    if (u) sheets.push(u);
+    // Social and sharing plugins carry the destination service's identity
+    // colours (Twitter blue, LinkedIn blue, etc.), not this site's brand.
+    if (u && !NON_BRAND_STYLESHEET.test(u)) {
+      sheets.push({
+        url: u,
+        priority: stylesheetPriority(u, $(el).attr("id") ?? "", index),
+      });
+    }
   });
 
+  sheets.sort((a, b) => b.priority - a.priority);
+
   const fetched = await Promise.all(
-    sheets.slice(0, 4).map(async (u) => {
+    sheets.slice(0, 6).map(async ({ url }) => {
       try {
-        const r = await fetchWithTimeout(u, 6000);
+        const r = await fetchWithTimeout(url, 6000);
         if (!r.ok) return "";
         const t = await r.text();
         return t.slice(0, 400_000);
@@ -303,14 +413,33 @@ async function findColors(
   );
   css += "\n" + fetched.join("\n");
 
-  // Inline style -attribuutit.
+  // Inline styles are applied by definition and do not need selector matching.
   $("[style]").each((_, el) => {
-    css += "\n" + ($(el).attr("style") ?? "");
+    inlineCss += "\n" + ($(el).attr("style") ?? "");
   });
 
-  // CSS variables are weighted up: they are almost always brand colours.
-  const varDecls = css.match(/--[\w-]*(?:color|brand|primary|accent|bg|theme)[\w-]*\s*:\s*[^;]+/gi) ?? [];
-  const weighted = css + "\n" + varDecls.join(";\n").repeat(6);
+  // Count only rules that can apply to the page's DOM. A downloaded component
+  // library may define hundreds of unused success, warning and danger colours.
+  const siteCss = stripNonBrandColorSources(css);
+  const appliedCss = findAppliedCss($, siteCss) + inlineCss;
+
+  // Site-specific variables used by matching rules are strong brand signals.
+  const varDecls =
+    appliedCss.match(
+      /--[\w-]*(?:color|brand|primary|accent|bg|theme)[\w-]*\s*:\s*[^;]+/gi
+    ) ?? [];
+  // Large branded surfaces carry more visual identity than ordinary text
+  // links. Give explicit background declarations a modest extra vote.
+  const backgroundDecls =
+    appliedCss.match(
+      /(?:^|[;\n])\s*background(?:-color)?\s*:\s*[^;]+/gim
+    ) ?? [];
+  const weighted =
+    appliedCss +
+    "\n" +
+    varDecls.join(";\n").repeat(6) +
+    "\n" +
+    backgroundDecls.join(";\n").repeat(2);
 
   const counts = new Map<string, number>();
   const bump = (hex: string, by = 1) => {
@@ -329,10 +458,9 @@ async function findColors(
     );
   }
 
-  // Prefer colours that also appear in the HTML (theme colours, brand tags).
+  // A declared browser theme colour is explicit page-level evidence.
   const themeColor = $('meta[name="theme-color"]').attr("content");
   if (themeColor) bump(themeColor, 25);
-  for (const m of html.matchAll(HEX_RE)) bump(m[0], 0.2);
 
   return [...counts.entries()]
     .map(([color, count]) => ({ color, count: Math.round(count) }))

@@ -12,6 +12,7 @@ import type { CreativeBrief, GoalId as BriefGoalId } from "@/lib/onboarding/type
 import { renderBannerHtml } from "@/lib/templates/banner";
 import { normalizeBrandContentType } from "@/lib/content-taxonomy";
 import { ContentTypeSelect } from "@/app/components/content-type-select";
+import { VideoDemo } from "@/app/components/video-demo";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -543,6 +544,13 @@ export default function Studio() {
               <AssetCard key={a.id} asset={a} />
             ))}
           </div>
+
+          {variants.find((variant) => variant.id === activeVariant) ? (
+            <VideoDemo
+              brand={brand}
+              copy={variants.find((variant) => variant.id === activeVariant)!}
+            />
+          ) : null}
 
           {/* The end of the path: without this the user is left alone with a
               zip file at the exact moment their interest peaks. Delivery is not

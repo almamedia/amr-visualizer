@@ -10,6 +10,7 @@ gets back finished display ads that meet Alma Media's spec requirements.
 ```bash
 npm install
 npx playwright install chromium
+npx remotion browser ensure          # needed for MP4 rendering
 cp .env.local.example .env.local   # add ANTHROPIC_API_KEY
 npm run dev
 ```
@@ -57,6 +58,7 @@ backend. The APIs are resource routes: route modules that export a
     api.extract.ts    scrape + brand analysis   → brand card JSON
     api.analyze.ts    scrape → brand card + business signals
     api.generate.ts   copy + template render    → assets + validation
+    api.video.ts      Remotion server render    → 10 s H.264 MP4
     api.validate.ts   spec check for one asset (+ GET = the specs)
     api.zip.ts        assets into a zip + README.txt
 /lib
@@ -67,7 +69,12 @@ backend. The APIs are resource routes: route modules that export a
   render.ts       Playwright → PNG/JPEG, one shared browser instance
   validate.ts     plain Node validation against the specs
   generate.ts     orchestration: images → copy → render → validation
+  /video          shared Player/renderer composition, scenes and video formats
 ```
+
+Run `npm run remotion` to open the video composition directly in Remotion
+Studio. The application results screen embeds the same composition with
+`@remotion/player`.
 
 ### Design system
 
@@ -262,8 +269,10 @@ Welcome → URL → Brand → Goal → Timeline → Audience → Budget → Plan
 
 ## Known limitations
 
-- **Video is unbuilt.** The specs are in the library (the `video` block) and an
-  `ENABLE_VIDEO` flag is reserved, but there is no `/api/video` route.
+- **Video is a local Remotion demo.** The results screen can preview and render
+  a 10-second H.264 MP4 in Paraati, Pystyparaati and Boksi sizes. The `/api/video`
+  route uses a cached server-side Remotion bundle. Production scaling, render
+  queues and permanent asset storage are deliberately still unbuilt.
 - **Image selection without an API key** takes the first images found on the
   page. The name- and path-based filter weeds out the obvious ads, but actually
   looking at images needs the model. The user drops a bad image on the brand

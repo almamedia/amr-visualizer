@@ -23,7 +23,12 @@ export default defineConfig(({ mode }) => {
        * stay unbundled or the server build breaks. This plays the same role
        * Next's `serverExternalPackages` setting did.
        */
-      external: ["playwright", "archiver"],
+      external: [
+        "playwright",
+        "archiver",
+        "@remotion/bundler",
+        "@remotion/renderer",
+      ],
     },
   };
 });
