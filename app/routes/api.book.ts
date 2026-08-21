@@ -98,6 +98,7 @@ export async function action({ request }: Route.ActionArgs) {
       channelIds: booking.channelIds,
       regionIds: booking.regionIds?.length ? booking.regionIds : undefined,
       cities: booking.cities?.length ? booking.cities : undefined,
+      cohortIds: booking.cohortIds?.length ? booking.cohortIds : undefined,
       audienceTypes: brief.audienceTypes,
     },
     tag: bookingTag(brief),

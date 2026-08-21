@@ -1,18 +1,23 @@
 /**
  * POST /profile — the targeting object the line item points at.
  *
- * v1 targets channels only, through the placement and publisher ids in
- * ./data/targeting.json. Those ids are still placeholders, so a channel that
- * resolves to nothing produces a warning: an empty profile is not "no
- * targeting we care about", it is a campaign that runs across all inventory.
+ * Three kinds of targeting go in here:
  *
- * Geography and audience segments are deliberately absent. Xandr segment ids
- * for the onboarding regions and audience types have not been supplied, and
- * inventing them would be worse than leaving the gap visible.
+ *   - Channels, through the placement and publisher ids in
+ *     ./data/targeting.json. Those ids are still placeholders, so a channel
+ *     that resolves to nothing produces a warning: an empty profile is not
+ *     "no targeting we care about", it is a campaign running across all
+ *     inventory.
+ *   - Audience, from the cohorts the user picked. Alma's cohorts exist in
+ *     Xandr as segments, so these resolve without a mapping table (./segments).
+ *   - Geography, from the regions and cities chosen on the audience step,
+ *     matched against Xandr's own names (./geo).
  */
 
 import { advertiserId as configuredAdvertiserId } from "./config";
 import { request } from "./client";
+import { resolveCities, resolveRegions } from "./geo";
+import { resolveCohortSegments } from "./segments";
 import targetingRaw from "./data/targeting.json";
 import type {
   BookingTargeting,
@@ -21,6 +26,7 @@ import type {
   ProfileCreatedResponse,
   ProfileInput,
   PublisherTarget,
+  SegmentGroupTarget,
 } from "./types";
 
 interface ChannelTargeting {
@@ -44,10 +50,19 @@ export interface BuiltProfile {
   warnings: string[];
 }
 
-export function buildProfile(
+/**
+ * Assemble the profile. Async because segments, regions and cities are looked
+ * up against Xandr by name — resolving them here rather than keeping a mapping
+ * table means nothing silently rots when Xandr renames something.
+ *
+ * `resolve: false` skips every lookup, for assembling a payload with no
+ * credentials configured.
+ */
+export async function buildProfile(
   targeting: BookingTargeting,
-  code?: string
-): BuiltProfile {
+  code?: string,
+  resolve = true
+): Promise<BuiltProfile> {
   const warnings: string[] = [];
   const placements: PlacementTarget[] = [];
   const publishers: PublisherTarget[] = [];
@@ -71,21 +86,52 @@ export function buildProfile(
     }
   }
 
-  if (placements.length === 0 && publishers.length === 0) {
+  // ------------------------------------------------------------- audience
+  let segmentGroups: SegmentGroupTarget[] = [];
+  const cohortIds = targeting.cohortIds ?? [];
+  if (cohortIds.length > 0 && resolve) {
+    const segments = await resolveCohortSegments(cohortIds);
+    warnings.push(...segments.warnings);
+    if (segments.ids.length > 0) {
+      // One group, OR inside it: the user picked alternative audiences, not
+      // people who must belong to every cohort at once.
+      segmentGroups = [
+        {
+          boolean_operator: "or",
+          segments: segments.ids.map((id) => ({ id, action: "include" as const })),
+        },
+      ];
+    }
+  } else if (cohortIds.length > 0) {
+    warnings.push("Audience segments were not resolved (lookups disabled).");
+  } else if (targeting.audienceTypes?.length) {
     warnings.push(
-      "The profile targets no inventory, so the line item would run across everything. Fill in lib/xandr/data/targeting.json before booking for real."
+      `Audience targeting (${targeting.audienceTypes.join(", ")}) is not applied — the flow produced no cohorts to target on.`
     );
   }
 
-  if (targeting.regionIds?.length || targeting.cities?.length) {
-    const places = [...(targeting.regionIds ?? []), ...(targeting.cities ?? [])];
-    warnings.push(
-      `Geographic targeting for ${places.join(", ")} is not applied — Xandr region ids are not mapped yet.`
-    );
+  // ------------------------------------------------------------ geography
+  const regionTargets: { id: number }[] = [];
+  const cityTargets: { id: number }[] = [];
+  if (resolve) {
+    const regions = await resolveRegions(targeting.regionIds ?? []);
+    warnings.push(...regions.warnings);
+    regionTargets.push(...regions.ids.map((id) => ({ id })));
+
+    const cities = await resolveCities(targeting.cities ?? []);
+    warnings.push(...cities.warnings);
+    cityTargets.push(...cities.ids.map((id) => ({ id })));
+  } else if (targeting.regionIds?.length || targeting.cities?.length) {
+    warnings.push("Geographic targeting was not resolved (lookups disabled).");
   }
-  if (targeting.audienceTypes?.length) {
+
+  if (placements.length === 0 && publishers.length === 0) {
+    const otherwiseTargeted =
+      segmentGroups.length > 0 || regionTargets.length > 0 || cityTargets.length > 0;
     warnings.push(
-      `Audience targeting (${targeting.audienceTypes.join(", ")}) is not applied — Xandr segment ids are not mapped yet.`
+      otherwiseTargeted
+        ? "No channel targeting: the line item can serve on any inventory the member reaches, narrowed only by audience and geography. Fill in lib/xandr/data/targeting.json to hold it to the recommended channels."
+        : "The profile targets nothing at all, so the line item would run across everything. Fill in lib/xandr/data/targeting.json before booking for real."
     );
   }
 
@@ -93,6 +139,20 @@ export function buildProfile(
     ...(code && { code }),
     ...(placements.length > 0 && { placement_targets: placements }),
     ...(publishers.length > 0 && { publisher_targets: publishers }),
+    ...(segmentGroups.length > 0 && {
+      segment_group_targets: segmentGroups,
+      segment_boolean_operator: "and" as const,
+    }),
+    // The action must be set alongside the list: Xandr's default is
+    // "exclude" with an empty list, which targets everywhere.
+    ...(regionTargets.length > 0 && {
+      region_targets: regionTargets,
+      region_action: "include" as const,
+    }),
+    ...(cityTargets.length > 0 && {
+      city_targets: cityTargets,
+      city_action: "include" as const,
+    }),
     require_cookie_for_freq_cap: true,
   };
 

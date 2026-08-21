@@ -118,10 +118,28 @@ export interface PublisherTarget {
   action: "include" | "exclude";
 }
 
+/** One audience group. Segments inside a group combine with its operator. */
+export interface SegmentGroupTarget {
+  boolean_operator: "and" | "or";
+  segments: { id: number; action: "include" | "exclude" }[];
+}
+
 export interface ProfileBody {
   code?: string;
   placement_targets?: PlacementTarget[];
   publisher_targets?: PublisherTarget[];
+  segment_group_targets?: SegmentGroupTarget[];
+  /** How the groups above combine with each other. */
+  segment_boolean_operator?: "and" | "or";
+  region_targets?: { id: number }[];
+  /**
+   * Xandr defaults every geography action to "exclude" with empty targets,
+   * which means "exclude nothing" — i.e. run everywhere. An include list is
+   * only honoured when the action says include.
+   */
+  region_action?: "include" | "exclude";
+  city_targets?: { id: number }[];
+  city_action?: "include" | "exclude";
   /**
    * Xandr rejects a frequency cap that cannot be counted, so this stays true
    * whenever caps are set — the gateway hardcodes it for the same reason.
@@ -214,6 +232,9 @@ export interface BookingTargeting {
   /** Onboarding region ids, e.g. ["uusimaa"]. */
   regionIds?: string[];
   cities?: string[];
+  /** Alma cohort ids from the audience step, resolved to Xandr segments. */
+  cohortIds?: string[];
+  /** Labels only, for warnings — targeting runs off cohortIds. */
   audienceTypes?: string[];
 }
 

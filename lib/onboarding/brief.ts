@@ -92,6 +92,7 @@ export function buildCreativeBrief(
       cities:
         answers.audience.geography === "city" ? answers.audience.cities : [],
       channelIds: recommendation.channels.map((c) => c.channel.id),
+      cohortIds: answers.audience.cohorts.map((c) => c.cohort.id),
       // The address the user typed on the URL step — the same one the brand
       // analysis ran against. Empty when they skipped that step, in which case
       // the site the brand was eventually read from is the next best thing.

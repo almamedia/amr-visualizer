@@ -64,3 +64,13 @@ try {
 } catch (e) {
   console.log("region lookup failed:", (e as Error).message);
 }
+
+console.log("\n=== onboarding regions resolved to Xandr ===");
+{
+  const { regions } = await import("../lib/onboarding/catalog");
+  const { resolveRegions } = await import("../lib/xandr/geo");
+  for (const r of regions) {
+    const { ids, warnings } = await resolveRegions([r.id]);
+    console.log(` ${r.id.padEnd(24)} -> ${ids[0] ?? "NO MATCH"}${warnings.length ? "  " + warnings[0] : ""}`);
+  }
+}

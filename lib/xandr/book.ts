@@ -243,7 +243,12 @@ export async function bookCampaign(
   }
 
   const codes = resolved.tag ? bookingCodes(resolved.tag) : null;
-  const profile = buildProfile(resolved.targeting, codes?.profile);
+  // Lookups need credentials; a dry run without them assembles what it can.
+  const profile = await buildProfile(
+    resolved.targeting,
+    codes?.profile,
+    !usePlaceholders
+  );
   payloads.profile = profile.input;
   warnings.push(...profile.warnings);
 

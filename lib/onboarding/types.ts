@@ -318,6 +318,12 @@ export interface CreativeBrief {
     cities: string[];
     /** Onboarding channel ids, for targeting lookup. */
     channelIds: string[];
+    /**
+     * Alma cohort ids the user settled on. These are the one identifier in the
+     * flow an adserver can target on directly, so they travel as ids — the
+     * human-readable paths in `audienceTypes` are for display only.
+     */
+    cohortIds: string[];
     /** Where the ad clicks through to — the site onboarding started from. */
     clickUrl: string;
   };

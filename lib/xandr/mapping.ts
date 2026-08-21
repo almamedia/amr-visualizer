@@ -175,6 +175,7 @@ export function buildBookingRequest(params: {
         answers.audience.geography === "city"
           ? answers.audience.cities
           : undefined,
+      cohortIds: answers.audience.cohorts.map((c) => c.cohort.id),
       audienceTypes: answers.audience.types,
     },
   };
