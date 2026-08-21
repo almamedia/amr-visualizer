@@ -31,6 +31,15 @@ const MIN_LOGO_CONTRAST = 1.6;
 /** In an HTML5 package the image shares its weight budget with the markup. */
 const IMAGE_BUDGET_RATIO = 0.5;
 
+/**
+ * Alma's flagship desktop size, 980 x 400. Every run renders it whether or not
+ * the recommendation asked for it: it is the size the campaign is shown in, so
+ * a set without one has nothing to put on a page. It is added quietly rather
+ * than offered as a choice — the recommendation stays about what suits the
+ * advertiser, and this is a production floor underneath it.
+ */
+const ALWAYS_RENDER_FORMAT_ID = "paraati";
+
 export interface GenerateOptions {
   brand: BrandCard;
   goalId: GoalId;
@@ -74,10 +83,12 @@ export async function generateAssets(
   opts: GenerateOptions
 ): Promise<GenerateResult> {
   const warnings: string[] = [];
-  const formatIds =
-    opts.formatIds?.length
-      ? opts.formatIds
-      : specs.formats.filter((f) => f.primary).map((f) => f.id);
+  const requestedIds = opts.formatIds?.length
+    ? opts.formatIds
+    : specs.formats.filter((f) => f.primary).map((f) => f.id);
+  const formatIds = requestedIds.includes(ALWAYS_RENDER_FORMAT_ID)
+    ? requestedIds
+    : [ALWAYS_RENDER_FORMAT_ID, ...requestedIds];
   const html5FormatId = opts.html5FormatId ?? specs.html5Formats[0].id;
 
   const limits = tightestLimits(formatIds);
