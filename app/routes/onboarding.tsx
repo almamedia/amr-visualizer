@@ -49,6 +49,7 @@ import type {
   GoalId,
   StartMode,
 } from "@/lib/onboarding/types";
+import type { BrandCard } from "@/lib/types";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -242,6 +243,13 @@ export default function OnboardingPage() {
           category={category}
           onBusinessChange={setBusiness}
           onCategoryChange={setCategory}
+          onBrandColorChange={(key, hex) =>
+            setAnalysis((a) =>
+              a.brand
+                ? { ...a, brand: { ...a.brand, colors: { ...a.brand.colors, [key]: hex } } }
+                : a
+            )
+          }
           onNext={next}
           onBack={back}
           onRetry={() => startAnalysis(answers.url)}
@@ -821,9 +829,12 @@ function BudgetStep({
  * a campaign. Nothing downstream — not the recommendation, not the ad copy —
  * runs on data they have not looked at.
  *
- * Brand assets are shown, not edited. Cropping a logo or dropping a photo is
- * work for the asset studio, which already does it well; here the only
- * question is whether we understood the business.
+ * Logo and photos are shown, not edited here — cropping a logo or dropping a
+ * photo is work for the asset studio, which already does it well. Colours are
+ * the one brand asset that gets a fix on this step: a scraped colour is a
+ * guess, and if it's wrong every downstream step (and the ad itself) inherits
+ * the mistake, so it's cheaper to correct it here than to notice it in the
+ * studio.
  */
 function BrandStep({
   analysis,
@@ -831,6 +842,7 @@ function BrandStep({
   category,
   onBusinessChange,
   onCategoryChange,
+  onBrandColorChange,
   onNext,
   onBack,
   onRetry,
@@ -840,6 +852,7 @@ function BrandStep({
   category: BusinessSignals["category"];
   onBusinessChange: (b: ConfirmedBusiness) => void;
   onCategoryChange: (c: BusinessSignals["category"]) => void;
+  onBrandColorChange: (key: keyof BrandCard["colors"], hex: string) => void;
   onNext: () => void;
   onBack: () => void;
   onRetry: () => void;
@@ -910,9 +923,9 @@ function BrandStep({
 
   const palette = brand
     ? ([
-        ["Primary", brand.colors.primary],
-        ["Accent", brand.colors.accent],
-        ["Secondary", brand.colors.secondary],
+        ["primary", "Primary", brand.colors.primary],
+        ["accent", "Accent", brand.colors.accent],
+        ["secondary", "Secondary", brand.colors.secondary],
       ] as const)
     : [];
   const photoCount = brand?.images.filter((i) => i.enabled).length ?? 0;
@@ -987,12 +1000,14 @@ function BrandStep({
               </div>
             )}
             <div className="ob-swatches">
-              {palette.map(([label, hex]) => (
-                <div className="ob-swatch" key={label}>
-                  <span
+              {palette.map(([key, label, hex]) => (
+                <div className="ob-swatch" key={key}>
+                  <input
+                    type="color"
                     className="ob-swatch-chip"
-                    style={{ background: hex }}
-                    aria-hidden="true"
+                    value={hex}
+                    onChange={(e) => onBrandColorChange(key, e.target.value)}
+                    aria-label={`${label} colour`}
                   />
                   <span className="ob-swatch-label">
                     {label}
@@ -1007,8 +1022,8 @@ function BrandStep({
             {photoCount > 0
               ? `Plus ${photoCount} photo${photoCount === 1 ? "" : "s"} from your site. `
               : ""}
-            You&rsquo;ll be able to change any of this when you make the ad —
-            that comes after the plan.
+            Got a colour wrong? Click a swatch to fix it. The logo and photos
+            can be changed when you make the ad — that comes after the plan.
           </p>
         </div>
       )}

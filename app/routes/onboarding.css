@@ -573,6 +573,23 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   flex: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.ob-swatch-chip::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.ob-swatch-chip::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+}
+
+.ob-swatch-chip::-moz-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
 }
 
 .ob-swatch-label {
