@@ -53,7 +53,7 @@ const copy: CopyVariant = {
 async function buildAssets(): Promise<GeneratedAsset[]> {
   const assets: GeneratedAsset[] = [];
 
-  for (const formatId of ["boksi", "performance-display"]) {
+  for (const formatId of ["paraati", "paraati-crossdevice"]) {
     const fmt = getFormat(formatId);
     const html = renderBannerHtml({
       width: fmt.width,
@@ -85,7 +85,7 @@ async function buildAssets(): Promise<GeneratedAsset[]> {
     });
   }
 
-  const h5 = getHtml5Format("performance-display-html5");
+  const h5 = getHtml5Format("paraati-crossdevice-html5");
   const base = getFormat(h5.baseFormat);
   const html = renderBannerHtml({
     width: base.width,

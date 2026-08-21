@@ -23,11 +23,11 @@ const PNG_1X1 =
 
 function asset(over: Partial<GeneratedAsset> & Pick<GeneratedAsset, "id">): GeneratedAsset {
   return {
-    formatId: "boksi",
-    formatName: "Boksi",
+    formatId: "paraati",
+    formatName: "Paraati",
     kind: "static",
-    width: 600,
-    height: 500,
+    width: 980,
+    height: 400,
     dataUri: PNG_1X1,
     fileName: `${over.id}.png`,
     fileSizeBytes: 1024,
@@ -38,14 +38,14 @@ function asset(over: Partial<GeneratedAsset> & Pick<GeneratedAsset, "id">): Gene
 }
 
 const assets: GeneratedAsset[] = [
-  asset({ id: "boksi-a" }),
-  asset({ id: "boksi-b", copy: { id: "b", headline: "Second", body: "Body", cta: "Read more" } }),
+  asset({ id: "paraati-a" }),
+  asset({ id: "paraati-b", copy: { id: "b", headline: "Second", body: "Body", cta: "Read more" } }),
   asset({
-    id: "boksi-html5-a",
+    id: "paraati-html5-a",
     kind: "html5",
     dataUri: undefined,
     html: "<html><body><div id='ad'>Hello</div><script>console.log('run')</script></body></html>",
-    fileName: "boksi-html5-a.html",
+    fileName: "paraati-html5-a.html",
   }),
 ];
 
