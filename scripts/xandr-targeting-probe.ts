@@ -10,10 +10,10 @@ try {
   const seg = await request<{ segments: any[] }>({
     method: "GET",
     service: "segment",
-    params: { member_id: memberId(), num_elements: 15 },
+    params: { member_id: memberId(), num_elements: 100 },
   });
   console.log("total:", seg.count);
-  for (const s of (seg.segments ?? []).slice(0, 15)) {
+  for (const s of seg.segments ?? []) {
     console.log(` id=${s.id}  code=${s.code ?? "-"}  short_name=${s.short_name ?? "-"}  name=${s.name ?? "-"}`);
   }
 } catch (e) {
