@@ -469,6 +469,10 @@ button.tiny {
   .brand-grid {
     grid-template-columns: 1fr;
   }
+
+  .field-row {
+    flex-direction: column;
+  }
 }
 
 .logo-box {
