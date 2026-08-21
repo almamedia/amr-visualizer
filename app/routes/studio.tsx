@@ -9,6 +9,7 @@ import type {
 } from "@/lib/types";
 import { BRIEF_STORAGE_KEY } from "@/lib/onboarding/brief";
 import type { CreativeBrief, GoalId as BriefGoalId } from "@/lib/onboarding/types";
+import { renderBannerHtml } from "@/lib/templates/banner";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -38,6 +39,28 @@ const GOALS: { id: GoalId; name: string; hint: string }[] = [
   { id: "offer", name: "Offer", hint: "Put a benefit or offer front and centre" },
   { id: "recruitment", name: "Recruitment", hint: "Attract people to apply" },
 ];
+
+/** What each colour role actually does in the rendered banner — see
+ *  resolveBannerColors() in lib/templates/banner.ts, which this mirrors. */
+const COLOR_HINTS: Record<keyof BrandCard["colors"], string> = {
+  primary: "The company name, and the background when there's no image.",
+  accent: "The button, and the line beside the image.",
+  secondary: "Backup colour for the background. Rarely seen.",
+  background: "The background when there's an image.",
+  text: "The headline and body text.",
+};
+
+/** Placeholder copy for the colour preview — real copy is written later, by
+ *  Claude or the mock templates, once the goal is chosen and generation runs. */
+const COLOR_PREVIEW_COPY: CopyVariant = {
+  id: "preview",
+  headline: "Your headline goes here",
+  body: "",
+  cta: "Button",
+};
+
+const COLOR_PREVIEW_WIDTH = 280;
+const COLOR_PREVIEW_HEIGHT = 165;
 
 export default function Studio() {
   const [phase, setPhase] = useState<Phase>("input");
@@ -695,7 +718,12 @@ function BrandEditor({
                 type="text"
                 value={brand.tone}
                 onChange={(e) => set("tone", e.target.value)}
+                placeholder="e.g. Warm and friendly"
               />
+              <p className="muted" style={{ marginTop: "var(--space-1)" }}>
+                How your ads should sound — this guides the copy that gets
+                written.
+              </p>
             </div>
             <div style={{ flex: 1 }}>
               <label htmlFor="industry">Industry</label>
@@ -712,6 +740,10 @@ function BrandEditor({
 
       <div className="field" style={{ marginTop: 20 }}>
         <label>Colour palette</label>
+        <p className="muted" style={{ marginBottom: "var(--space-2)" }}>
+          We picked these up from your site. Click a swatch to fix a colour
+          if we got it wrong.
+        </p>
         <div className="swatches">
           {(
             [
@@ -729,45 +761,95 @@ function BrandEditor({
                 onChange={(e) => setColor(key, e.target.value)}
                 aria-label={label}
               />
-              <span>
-                {label}
-                <br />
-                {brand.colors[key]}
-              </span>
+              <div className="swatch-info">
+                <strong>
+                  {label} <span className="swatch-hex">{brand.colors[key]}</span>
+                </strong>
+                <span className="swatch-hint">{COLOR_HINTS[key]}</span>
+              </div>
             </div>
           ))}
         </div>
+
+        <div className="color-preview-grid">
+          {primaryUrl && (
+            <div className="color-preview-card">
+              <span className="color-preview-label">Ad with image</span>
+              <iframe
+                srcDoc={renderBannerHtml({
+                  width: COLOR_PREVIEW_WIDTH,
+                  height: COLOR_PREVIEW_HEIGHT,
+                  brand,
+                  copy: COLOR_PREVIEW_COPY,
+                  imageDataUri: primaryUrl,
+                  logoDataUri: brand.logoUrl,
+                  animated: false,
+                })}
+                width={COLOR_PREVIEW_WIDTH}
+                height={COLOR_PREVIEW_HEIGHT}
+                title="Ad with image"
+                sandbox="allow-scripts"
+                scrolling="no"
+              />
+            </div>
+          )}
+          <div className="color-preview-card">
+            <span className="color-preview-label">Ad without image</span>
+            <iframe
+              srcDoc={renderBannerHtml({
+                width: COLOR_PREVIEW_WIDTH,
+                height: COLOR_PREVIEW_HEIGHT,
+                brand,
+                copy: COLOR_PREVIEW_COPY,
+                imageDataUri: null,
+                logoDataUri: brand.logoUrl,
+                animated: false,
+              })}
+              width={COLOR_PREVIEW_WIDTH}
+              height={COLOR_PREVIEW_HEIGHT}
+              title="Ad without image"
+              sandbox="allow-scripts"
+              scrolling="no"
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="field field-row">
-        <div style={{ flex: 1 }}>
-          <label htmlFor="fh">Heading font</label>
-          <input
-            id="fh"
-            type="text"
-            value={brand.fonts.heading}
-            onChange={(e) =>
-              onChange({
-                ...brand,
-                fonts: { ...brand.fonts, heading: e.target.value },
-              })
-            }
-          />
+      <div className="field">
+        <div className="field-row">
+          <div style={{ flex: 1 }}>
+            <label htmlFor="fh">Heading font</label>
+            <input
+              id="fh"
+              type="text"
+              value={brand.fonts.heading}
+              onChange={(e) =>
+                onChange({
+                  ...brand,
+                  fonts: { ...brand.fonts, heading: e.target.value },
+                })
+              }
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label htmlFor="fb">Body font</label>
+            <input
+              id="fb"
+              type="text"
+              value={brand.fonts.body}
+              onChange={(e) =>
+                onChange({
+                  ...brand,
+                  fonts: { ...brand.fonts, body: e.target.value },
+                })
+              }
+            />
+          </div>
         </div>
-        <div style={{ flex: 1 }}>
-          <label htmlFor="fb">Body font</label>
-          <input
-            id="fb"
-            type="text"
-            value={brand.fonts.body}
-            onChange={(e) =>
-              onChange({
-                ...brand,
-                fonts: { ...brand.fonts, body: e.target.value },
-              })
-            }
-          />
-        </div>
+        <p className="muted" style={{ marginTop: "var(--space-1)" }}>
+          The ad uses the closest system font to this, not the exact
+          typeface — Alma's file-size limit rules out loading a web font.
+        </p>
       </div>
 
       <div className="field">

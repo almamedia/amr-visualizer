@@ -495,33 +495,90 @@ button.tiny {
 }
 
 .swatches {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 .swatch {
-  text-align: center;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  text-align: left;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
 }
 
 .swatch input[type="color"] {
-  width: 60px;
-  height: 46px;
+  width: 44px;
+  height: 44px;
   border: 2px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: none;
   padding: 2px;
   cursor: pointer;
+  flex: none;
 }
 
-.swatch span {
-  display: block;
+.swatch-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.swatch-info strong {
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+}
+
+.swatch-hex {
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch-hint {
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: var(--space-1);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-  text-transform: none;
+  line-height: 1.35;
+}
+
+/* Genuine live previews, not mockups: they call the same renderBannerHtml()
+   used for the finished assets, so a colour edit shows exactly what it will
+   look like in both banner modes (see lib/templates/banner.ts). */
+.color-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.color-preview-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--paper-alt);
+}
+
+.color-preview-label {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.color-preview-card iframe {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 280 / 165;
+  border: 0;
 }
 
 .images {
