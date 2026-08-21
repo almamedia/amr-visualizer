@@ -1026,7 +1026,7 @@ function BudgetStep({
       <h2 className="ob-q">{c.question}</h2>
       <p className="ob-sub">{c.allTiersNote}</p>
 
-      <div className="ob-options three">
+      <div className="ob-options stacked">
         {budgetTiers.map((t) => (
           <OptionCard
             key={t.id}
