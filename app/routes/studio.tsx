@@ -77,7 +77,6 @@ export default function Studio() {
   const [booking, setBooking] = useState(false);
   const [bookResult, setBookResult] = useState<{
     lineItemId: number | null;
-    warnings: string[];
   } | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
 
@@ -226,7 +225,10 @@ export default function Studio() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "The booking failed.");
-      setBookResult({ lineItemId: data.lineItemId, warnings: data.warnings ?? [] });
+      // Warnings stay in the API response for whoever is debugging a booking;
+      // the advertiser is not the audience for them.
+      if (data.warnings?.length) console.info("Xandr booking warnings:", data.warnings);
+      setBookResult({ lineItemId: data.lineItemId });
     } catch (e) {
       setBookError(e instanceof Error ? e.message : "The booking failed.");
     } finally {
@@ -578,13 +580,6 @@ export default function Studio() {
                   </strong>{" "}
                   It is paused until Alma confirms the placement, so nothing is
                   running yet.
-                  {bookResult.warnings.length > 0 && (
-                    <ul style={{ margin: "8px 0 0 18px" }}>
-                      {bookResult.warnings.map((w) => (
-                        <li key={w}>{w}</li>
-                      ))}
-                    </ul>
-                  )}
                 </div>
               )}
 

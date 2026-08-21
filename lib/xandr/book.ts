@@ -27,7 +27,7 @@ import {
 } from "./creative";
 import { buildLineItem, createLineItem } from "./line-item";
 import { decodeDataUri, uploadImage } from "./media";
-import { buildProfile, createProfile, deleteProfile, hasProvisionalTargeting } from "./profile";
+import { buildProfile, createProfile, deleteProfile } from "./profile";
 import type {
   BookingPayloads,
   BookingRequest,
@@ -72,6 +72,13 @@ export interface BookOptions {
    * rather than leave a second set orphaned.
    */
   reuseCreativeIds?: number[];
+  /**
+   * Refuse to book when no recommended channel resolves to a publisher. Off by
+   * default: an unmapped channel means the campaign is eligible for every
+   * title the member reaches rather than the one chosen, which is accepted
+   * for now and reported as a warning. Turn this on to make it an error.
+   */
+  strictInventory?: boolean;
   /**
    * Create the line item running rather than paused. Off by default: an
    * untargeted profile is eligible for every piece of inventory the member
@@ -210,14 +217,28 @@ export async function bookCampaign(
     );
   }
 
-  if (hasProvisionalTargeting) {
-    warnings.push(
-      "Channel targeting ids in lib/xandr/data/targeting.json are still placeholders."
-    );
-  }
   if (!dryRun && !isTestMember()) {
     warnings.push(
       "This booking was made under the live Xandr member, not the test member."
+    );
+  }
+
+  // Targeting first. It needs no writes, so a campaign that cannot be aimed
+  // fails before a single creative is uploaded.
+  const codes = resolved.tag ? bookingCodes(resolved.tag) : null;
+  // Lookups need credentials; a dry run without them assembles what it can.
+  const profile = await buildProfile(
+    resolved.targeting,
+    codes?.profile,
+    !usePlaceholders
+  );
+  payloads.profile = profile.input;
+  warnings.push(...profile.warnings);
+
+  // buildProfile already said this once, in one line. Only escalate it.
+  if (profile.noChannelResolved && opts.strictInventory && !dryRun) {
+    throw new Error(
+      `None of the recommended channels (${resolved.targeting.channelIds.join(", ")}) have a publisher id for this Xandr member, so the campaign would be eligible for every title rather than the ones chosen.`
     );
   }
 
@@ -241,16 +262,6 @@ export async function bookCampaign(
       );
     }
   }
-
-  const codes = resolved.tag ? bookingCodes(resolved.tag) : null;
-  // Lookups need credentials; a dry run without them assembles what it can.
-  const profile = await buildProfile(
-    resolved.targeting,
-    codes?.profile,
-    !usePlaceholders
-  );
-  payloads.profile = profile.input;
-  warnings.push(...profile.warnings);
 
   if (dryRun) {
     // Ids the real run would produce, so the line item payload is complete.

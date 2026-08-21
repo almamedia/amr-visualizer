@@ -3,25 +3,24 @@
  *
  * Three kinds of targeting go in here:
  *
- *   - Channels, through the placement and publisher ids in
- *     ./data/targeting.json. Those ids are still placeholders, so a channel
- *     that resolves to nothing produces a warning: an empty profile is not
- *     "no targeting we care about", it is a campaign running across all
- *     inventory.
+ *   - Channels, as publisher targets from ./data/targeting.json. Targeting the
+ *     publisher holds the line item to that title's inventory without
+ *     enumerating ad slots, so placements are not used. A channel with no
+ *     publisher id produces a warning: an empty profile is not "no targeting
+ *     we care about", it is a campaign running across all inventory.
  *   - Audience, from the cohorts the user picked. Alma's cohorts exist in
  *     Xandr as segments, so these resolve without a mapping table (./segments).
  *   - Geography, from the regions and cities chosen on the audience step,
  *     matched against Xandr's own names (./geo).
  */
 
-import { advertiserId as configuredAdvertiserId } from "./config";
+import { advertiserId as configuredAdvertiserId, memberId } from "./config";
 import { request } from "./client";
 import { resolveCities, resolveRegions } from "./geo";
 import { resolveCohortSegments } from "./segments";
 import targetingRaw from "./data/targeting.json";
 import type {
   BookingTargeting,
-  PlacementTarget,
   ProfileBody,
   ProfileCreatedResponse,
   ProfileInput,
@@ -31,8 +30,8 @@ import type {
 
 interface ChannelTargeting {
   id: string;
-  publisherId: number | null;
-  placementIds: number[];
+  /** Publisher id per Xandr member — the ids differ between test and live. */
+  publishers: Record<string, number | null>;
 }
 
 /** The only place the Xandr targeting map is read from. */
@@ -48,6 +47,12 @@ export function getChannelTargeting(id: string): ChannelTargeting | undefined {
 export interface BuiltProfile {
   input: ProfileInput;
   warnings: string[];
+  /**
+   * True when channels were requested but none resolved to a publisher. Xandr
+   * reads an empty publisher list as "eligible everywhere", so this is not a
+   * missing narrowing — it is the opposite of the one the user chose.
+   */
+  noChannelResolved: boolean;
 }
 
 /**
@@ -64,26 +69,17 @@ export async function buildProfile(
   resolve = true
 ): Promise<BuiltProfile> {
   const warnings: string[] = [];
-  const placements: PlacementTarget[] = [];
   const publishers: PublisherTarget[] = [];
 
+  const member = memberId();
+  const unmapped: string[] = [];
   for (const channelId of targeting.channelIds) {
-    const mapping = getChannelTargeting(channelId);
-    if (!mapping) {
-      warnings.push(`No Xandr targeting is mapped for channel "${channelId}".`);
+    const publisherId = getChannelTargeting(channelId)?.publishers[member] ?? null;
+    if (publisherId === null) {
+      unmapped.push(channelId);
       continue;
     }
-    for (const placementId of mapping.placementIds) {
-      placements.push({ id: placementId, action: "include" });
-    }
-    if (mapping.publisherId !== null) {
-      publishers.push({ id: mapping.publisherId, action: "include" });
-    }
-    if (mapping.placementIds.length === 0 && mapping.publisherId === null) {
-      warnings.push(
-        `Channel "${channelId}" has no Xandr ids yet (lib/xandr/data/targeting.json is provisional).`
-      );
-    }
+    publishers.push({ id: publisherId, action: "include" });
   }
 
   // ------------------------------------------------------------- audience
@@ -125,19 +121,22 @@ export async function buildProfile(
     warnings.push("Geographic targeting was not resolved (lookups disabled).");
   }
 
-  if (placements.length === 0 && publishers.length === 0) {
-    const otherwiseTargeted =
-      segmentGroups.length > 0 || regionTargets.length > 0 || cityTargets.length > 0;
+  // One line about inventory, not one per channel plus a summary. The
+  // consequence is the same either way; only the scope differs.
+  const noChannelResolved =
+    targeting.channelIds.length > 0 && publishers.length === 0;
+  if (noChannelResolved) {
     warnings.push(
-      otherwiseTargeted
-        ? "No channel targeting: the line item can serve on any inventory the member reaches, narrowed only by audience and geography. Fill in lib/xandr/data/targeting.json to hold it to the recommended channels."
-        : "The profile targets nothing at all, so the line item would run across everything. Fill in lib/xandr/data/targeting.json before booking for real."
+      `No publisher id on member ${member} for ${unmapped.join(", ")}, so the campaign is not held to those titles — Xandr treats an empty publisher list as eligible everywhere.`
+    );
+  } else if (unmapped.length > 0) {
+    warnings.push(
+      `${unmapped.join(", ")} have no publisher id on member ${member}, so the campaign runs only on the channels that do.`
     );
   }
 
   const profile: ProfileBody = {
     ...(code && { code }),
-    ...(placements.length > 0 && { placement_targets: placements }),
     ...(publishers.length > 0 && { publisher_targets: publishers }),
     ...(segmentGroups.length > 0 && {
       segment_group_targets: segmentGroups,
@@ -156,7 +155,7 @@ export async function buildProfile(
     require_cookie_for_freq_cap: true,
   };
 
-  return { input: { profile }, warnings };
+  return { input: { profile }, warnings, noChannelResolved };
 }
 
 export async function createProfile(
