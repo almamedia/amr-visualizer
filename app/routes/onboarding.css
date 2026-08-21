@@ -117,6 +117,10 @@
   border: 0;
   padding: 0;
   margin: 0 0 var(--space-4);
+  /* A fieldset defaults to min-width: min-content and will happily grow wider
+     than its container to fit its widest child. Without this, one long option
+     card drags the whole step outside the card it lives in. */
+  min-width: 0;
 }
 
 /* ------------------------------------------------ option cards */
@@ -124,6 +128,7 @@
 .ob-options {
   display: grid;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .ob-options.stacked {
@@ -147,6 +152,14 @@
   gap: 2px;
   min-height: 48px;
   width: 100%;
+  /* These are buttons, and buttons are nowrap by default. That is fine for a
+     two-word hint but not for the AI-written sentences on the audience step,
+     which would otherwise set the width of the whole grid. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  /* Grid items default to min-width: auto, so a wide card refuses to shrink
+     into its 1fr track. */
+  min-width: 0;
   text-align: left;
   padding: var(--space-3);
   border-radius: var(--radius-md);
