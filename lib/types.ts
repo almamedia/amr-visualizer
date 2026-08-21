@@ -14,9 +14,13 @@ export interface DisplayFormat {
   maxFileSizeKb: number;
   acceptedTypes: string[];
   device: "desktop" | "mobile" | "both";
+  /** Alma's own grouping on the display format table. */
+  family?: "standard" | "tactical" | "special";
   primary: boolean;
   requirements?: string[];
-  mobileAlternative?: { width: number; height: number };
+  /** Other sizes Alma accepts for the same product. Not rendered — they are
+   *  here so the offering can state what a buyer may supply. */
+  alternateSizes?: { width: number; height: number }[];
   textLimits: TextLimits;
 }
 

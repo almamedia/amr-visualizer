@@ -16,4 +16,5 @@ export default [
   route("api/generate", "routes/api.generate.ts"),
   route("api/validate", "routes/api.validate.ts"),
   route("api/zip", "routes/api.zip.ts"),
+  route("api/book", "routes/api.book.ts"),
 ] satisfies RouteConfig;

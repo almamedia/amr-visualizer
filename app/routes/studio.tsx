@@ -74,6 +74,11 @@ export default function Studio() {
   const [limits, setLimits] = useState<TextLimits | null>(null);
   const [zipAll, setZipAll] = useState(false);
   const [delivered, setDelivered] = useState(false);
+  const [booking, setBooking] = useState(false);
+  const [bookResult, setBookResult] = useState<{
+    lineItemId: number | null;
+  } | null>(null);
+  const [bookError, setBookError] = useState<string | null>(null);
 
   /** The brief handed over by the onboarding microsite. When it exists the
    *  page need not be analysed again — the brand card came with it. */
@@ -193,6 +198,41 @@ export default function Studio() {
       setError(err instanceof Error ? err.message : "Tuntematon virhe.");
     } finally {
       setBusy(null);
+    }
+  }
+
+  /**
+   * Book the finished ad into the adserver. Only possible when the user came
+   * through onboarding: the brief is what carries the dates, budget and
+   * targeting a line item needs. Without one the button says so instead.
+   */
+  async function deliver() {
+    if (!brief?.booking) {
+      setDelivered(true);
+      return;
+    }
+
+    setBooking(true);
+    setBookError(null);
+    try {
+      // Only the variant the user settled on is booked — the other two were
+      // alternatives, not extra ads to run.
+      const chosen = assets.filter((a) => a.id.endsWith(`-${activeVariant}`));
+      const res = await fetch("/api/book", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ brief, assets: chosen }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "The booking failed.");
+      // Warnings stay in the API response for whoever is debugging a booking;
+      // the advertiser is not the audience for them.
+      if (data.warnings?.length) console.info("Xandr booking warnings:", data.warnings);
+      setBookResult({ lineItemId: data.lineItemId });
+    } catch (e) {
+      setBookError(e instanceof Error ? e.message : "The booking failed.");
+    } finally {
+      setBooking(false);
     }
   }
 
@@ -518,17 +558,36 @@ export default function Studio() {
               </p>
 
               <div className="actions">
-                <button type="button" onClick={() => setDelivered(true)}>
-                  Deliver to Alma
+                <button
+                  type="button"
+                  onClick={deliver}
+                  disabled={booking || Boolean(bookResult)}
+                >
+                  {booking ? "Booking…" : "Deliver to Alma"}
                 </button>
               </div>
 
-              {delivered && (
+              {bookError && (
                 <div className="notice" style={{ marginTop: 16 }}>
-                  <strong>This is a placeholder.</strong> Delivery is not
-                  connected: in production this would open the asset upload and
-                  the booking, or hand them straight to campaign management. For
-                  now, download the zip and send it the agreed way.
+                  <strong>The booking did not go through.</strong> {bookError}
+                </div>
+              )}
+
+              {bookResult && (
+                <div className="notice" style={{ marginTop: 16 }}>
+                  <strong>
+                    Booked — line item {bookResult.lineItemId}.
+                  </strong>{" "}
+                  It is paused until Alma confirms the placement, so nothing is
+                  running yet.
+                </div>
+              )}
+
+              {delivered && !bookResult && !bookError && (
+                <div className="notice" style={{ marginTop: 16 }}>
+                  <strong>Not connected for this ad.</strong> Booking needs the
+                  dates, budget and targeting that only the onboarding flow
+                  collects. Download the zip and send it the agreed way.
                 </div>
               )}
             </div>

@@ -277,7 +277,8 @@ export interface Recommendation {
  * the onboarding microsite and the asset creation flow.
  */
 export interface CreativeBrief {
-  version: 1;
+  /** Bumped to 2 when the booking fields below were added. */
+  version: 2;
   businessName: string;
   industry: string;
   productsOrServices: string;
@@ -294,6 +295,38 @@ export interface CreativeBrief {
     specFormatId: string | null;
   }[];
   budgetTier: string;
+  /**
+   * What the adserver needs and the rest of the brief does not carry. Kept in
+   * one block so it is obvious this is booking data, not creative direction.
+   */
+  booking: {
+    /** ISO date the campaign starts (YYYY-MM-DD). */
+    startDate: string;
+    /** Months it runs. Resolved, so "undecided" is already turned into a number. */
+    months: number;
+    /** EUR per month the recommendation was calculated on. */
+    monthlyBudgetEur: number;
+    /** EUR for the whole flight. */
+    lifetimeBudgetEur: number;
+    /** How the primary format is sold to the SME. */
+    pricingModel: PricingModel;
+    /** Per click for cpc formats, per 1000 impressions for cpm. */
+    priceEur: number;
+    /** Official region ids when the user narrowed to regions, else empty. */
+    regionIds: string[];
+    /** City names when the user narrowed to cities, else empty. */
+    cities: string[];
+    /** Onboarding channel ids, for targeting lookup. */
+    channelIds: string[];
+    /**
+     * Alma cohort ids the user settled on. These are the one identifier in the
+     * flow an adserver can target on directly, so they travel as ids — the
+     * human-readable paths in `audienceTypes` are for display only.
+     */
+    cohortIds: string[];
+    /** Where the ad clicks through to — the site onboarding started from. */
+    clickUrl: string;
+  };
   /** Free text the advertiser added about their audience, when they gave any. */
   audienceNotes?: string;
   /** Carried straight through so the studio need not re-scrape. */

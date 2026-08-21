@@ -6,7 +6,12 @@
     "dev": "react-router dev",
     "build": "react-router build",
     "start": "node --env-file-if-exists=.env.local node_modules/.bin/react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc"
+    "typecheck": "react-router typegen && tsc",
+    "xandr:live-test": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-live-test.ts",
+    "xandr:cleanup": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-cleanup.ts",
+    "xandr:targeting": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-targeting-probe.ts",
+    "xandr:probe": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-probe.ts",
+    "xandr:dry-run": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-dry-run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

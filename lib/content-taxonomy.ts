@@ -118,7 +118,7 @@ export function resolveContentTypePicks(
   primary: string,
   alternatives: string[] = []
 ): { contentType: string; contentTypeAlternatives: string[] } {
-  const contentType = snapContentType(primary);
+  let contentType = snapContentType(primary);
   const seen = new Set<string>([contentType.toLowerCase()]);
   const alts: string[] = [];
 
@@ -128,6 +128,14 @@ export function resolveContentTypePicks(
     seen.add(snapped.toLowerCase());
     alts.push(snapped);
     if (alts.length === 4) break;
+  }
+
+  // The model's first choice does not always land on an official name while
+  // its runners-up do. Promoting the best surviving alternative beats handing
+  // back nothing at all: the field is required, and an approximate guess the
+  // advertiser can correct is more use than an empty select.
+  if (!contentType && alts.length > 0) {
+    contentType = alts.shift() as string;
   }
 
   if (contentType && alts.length < 4) {

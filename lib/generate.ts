@@ -31,6 +31,15 @@ const MIN_LOGO_CONTRAST = 1.6;
 /** In an HTML5 package the image shares its weight budget with the markup. */
 const IMAGE_BUDGET_RATIO = 0.5;
 
+/**
+ * Alma's flagship desktop size, 980 x 400. Every run renders it whether or not
+ * the recommendation asked for it: it is the size the campaign is shown in, so
+ * a set without one has nothing to put on a page. It is added quietly rather
+ * than offered as a choice — the recommendation stays about what suits the
+ * advertiser, and this is a production floor underneath it.
+ */
+const ALWAYS_RENDER_FORMAT_ID = "paraati";
+
 export interface GenerateOptions {
   brand: BrandCard;
   goalId: GoalId;
@@ -41,6 +50,14 @@ export interface GenerateOptions {
   /** Copy the user has edited. When given, Claude is not called — the assets
    *  are rendered straight from this text. */
   copyVariants?: CopyVariant[];
+  /**
+   * Landing page for the HTML5 assets. Defaults to the site the brand was read
+   * from. Static assets do not need it — the adserver makes those clickable —
+   * but an HTML5 tag carries its own link or the ad is dead on arrival.
+   */
+  clickUrl?: string;
+  /** Adserver click macro placed before the landing page, e.g. "${CLICK_URL}". */
+  clickMacro?: string;
 }
 
 export interface GenerateResult {
@@ -66,10 +83,12 @@ export async function generateAssets(
   opts: GenerateOptions
 ): Promise<GenerateResult> {
   const warnings: string[] = [];
-  const formatIds =
-    opts.formatIds?.length
-      ? opts.formatIds
-      : specs.formats.filter((f) => f.primary).map((f) => f.id);
+  const requestedIds = opts.formatIds?.length
+    ? opts.formatIds
+    : specs.formats.filter((f) => f.primary).map((f) => f.id);
+  const formatIds = requestedIds.includes(ALWAYS_RENDER_FORMAT_ID)
+    ? requestedIds
+    : [ALWAYS_RENDER_FORMAT_ID, ...requestedIds];
   const html5FormatId = opts.html5FormatId ?? specs.html5Formats[0].id;
 
   const limits = tightestLimits(formatIds);
@@ -210,6 +229,8 @@ export async function generateAssets(
       imageDataUri: imagesByFormat.get(h5Base.id) ?? null,
       logoDataUri,
       animated: true,
+      clickUrl: opts.clickUrl ?? opts.brand.sourceUrl ?? null,
+      clickMacro: opts.clickMacro,
     });
     const bytes = Buffer.byteLength(html, "utf8");
 

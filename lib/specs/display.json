@@ -1,5 +1,5 @@
 {
-  "$comment": "Alma Media display advertising specs. Source: https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/ (fetched 2026-08-11). Dimensions and maximum weights are Alma's official figures. Format names are Alma's own product names and are kept as-is — they are what a media buyer books. Character limits are this tool's template-level limits (legibility at a given size), not Alma requirements: Alma specifies character limits only for Performance Native.",
+  "$comment": "Alma Media display advertising formats. Sizes are Alma's own display format table (Standard / Taktiset / Erikoisratkaisut), grouped by the product name a media buyer books and by device. width/height is the size this tool renders; alternateSizes are the other sizes Alma accepts for the same product and are not generated. Format names are Alma's own and are kept as-is. Character limits are this tool's template-level limits (legibility at a given size), not Alma requirements: Alma specifies character limits only for Performance Native.",
   "source": {
     "url": "https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/",
     "fetchedAt": "2026-08-11"
@@ -44,7 +44,9 @@
         "3rd-party-tag"
       ],
       "device": "desktop",
+      "family": "standard",
       "primary": true,
+      "$comment": "The desktop masthead. Alma's flagship display size and the one every campaign in this tool is built around.",
       "textLimits": {
         "headline": 60,
         "body": 120,
@@ -52,31 +54,36 @@
       }
     },
     {
-      "id": "pystyparaati",
-      "name": "Pystyparaati",
+      "id": "paraati-mobiili",
+      "name": "Paraati (mobiili)",
       "width": 300,
-      "height": 600,
+      "height": 300,
       "maxFileSizeKb": 300,
       "acceptedTypes": [
         "jpg",
         "png",
         "gif",
         "html5",
-        "video",
         "3rd-party-tag"
       ],
-      "device": "desktop",
-      "primary": true,
-      "$comment": "Long compound words are common in this market. At 300 px wide the headline wraps to three lines at around 55 characters, and 600 px of height leaves plenty of room for it.",
+      "device": "mobile",
+      "family": "standard",
+      "primary": false,
+      "alternateSizes": [
+        {
+          "width": 320,
+          "height": 320
+        }
+      ],
       "textLimits": {
-        "headline": 55,
-        "body": 105,
-        "cta": 22
+        "headline": 44,
+        "body": 80,
+        "cta": 20
       }
     },
     {
-      "id": "performance-display",
-      "name": "Performance Display",
+      "id": "paraati-crossdevice",
+      "name": "Paraati (crossdevice)",
       "width": 600,
       "height": 600,
       "maxFileSizeKb": 300,
@@ -88,7 +95,14 @@
         "3rd-party-tag"
       ],
       "device": "both",
+      "family": "standard",
       "primary": true,
+      "alternateSizes": [
+        {
+          "width": 640,
+          "height": 640
+        }
+      ],
       "requirements": [
         "The whole surface is clickable",
         "Clear branding",
@@ -101,10 +115,44 @@
       }
     },
     {
-      "id": "mobiiliparaati",
-      "name": "Mobiiliparaati",
+      "id": "digikokosivu",
+      "name": "Digikokosivu",
+      "width": 620,
+      "height": 891,
+      "maxFileSizeKb": 300,
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "video",
+        "3rd-party-tag"
+      ],
+      "device": "desktop",
+      "family": "standard",
+      "primary": false,
+      "alternateSizes": [
+        {
+          "width": 610,
+          "height": 877
+        },
+        {
+          "width": 468,
+          "height": 672
+        }
+      ],
+      "$comment": "468 x 672 is B2B inventory only.",
+      "textLimits": {
+        "headline": 60,
+        "body": 130,
+        "cta": 24
+      }
+    },
+    {
+      "id": "digikokosivu-mobiili",
+      "name": "Digikokosivu (mobiili)",
       "width": 300,
-      "height": 431,
+      "height": 600,
       "maxFileSizeKb": 300,
       "acceptedTypes": [
         "jpg",
@@ -114,16 +162,55 @@
         "3rd-party-tag"
       ],
       "device": "mobile",
+      "family": "standard",
       "primary": false,
+      "alternateSizes": [
+        {
+          "width": 300,
+          "height": 431
+        }
+      ],
       "textLimits": {
         "headline": 46,
-        "body": 85,
+        "body": 90,
         "cta": 20
       }
     },
     {
-      "id": "boksi",
-      "name": "Boksi",
+      "id": "boksit-mobiili",
+      "name": "Boksit (mobiili)",
+      "width": 300,
+      "height": 250,
+      "maxFileSizeKb": 300,
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "3rd-party-tag"
+      ],
+      "device": "mobile",
+      "family": "standard",
+      "primary": false,
+      "alternateSizes": [
+        {
+          "width": 320,
+          "height": 300
+        },
+        {
+          "width": 300,
+          "height": 150
+        }
+      ],
+      "textLimits": {
+        "headline": 42,
+        "body": 70,
+        "cta": 18
+      }
+    },
+    {
+      "id": "boksit-crossdevice",
+      "name": "Boksit (crossdevice)",
       "width": 600,
       "height": 500,
       "maxFileSizeKb": 300,
@@ -135,15 +222,115 @@
         "video",
         "3rd-party-tag"
       ],
-      "device": "desktop",
-      "primary": false,
-      "mobileAlternative": {
-        "width": 600,
-        "height": 600
-      },
+      "device": "both",
+      "family": "standard",
+      "primary": true,
+      "alternateSizes": [
+        {
+          "width": 640,
+          "height": 533
+        }
+      ],
       "textLimits": {
         "headline": 50,
         "body": 105,
+        "cta": 22
+      }
+    },
+    {
+      "id": "suurtaulu",
+      "name": "Suurtaulu",
+      "width": 300,
+      "height": 600,
+      "maxFileSizeKb": 300,
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "video",
+        "3rd-party-tag"
+      ],
+      "device": "desktop",
+      "family": "tactical",
+      "primary": false,
+      "alternateSizes": [
+        {
+          "width": 300,
+          "height": 431
+        },
+        {
+          "width": 250,
+          "height": 600
+        },
+        {
+          "width": 200,
+          "height": 600
+        },
+        {
+          "width": 160,
+          "height": 600
+        },
+        {
+          "width": 140,
+          "height": 350
+        }
+      ],
+      "$comment": "Long compound words are common in this market. At 300 px wide the headline wraps to three lines at around 55 characters, and 600 px of height leaves plenty of room for it.",
+      "textLimits": {
+        "headline": 55,
+        "body": 105,
+        "cta": 22
+      }
+    },
+    {
+      "id": "boksi",
+      "name": "Boksi",
+      "width": 300,
+      "height": 300,
+      "maxFileSizeKb": 300,
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "3rd-party-tag"
+      ],
+      "device": "desktop",
+      "family": "tactical",
+      "primary": false,
+      "alternateSizes": [
+        {
+          "width": 300,
+          "height": 250
+        }
+      ],
+      "textLimits": {
+        "headline": 44,
+        "body": 80,
+        "cta": 20
+      }
+    },
+    {
+      "id": "ylapaikka",
+      "name": "Yläpaikka",
+      "width": 980,
+      "height": 120,
+      "maxFileSizeKb": 300,
+      "acceptedTypes": [
+        "jpg",
+        "png",
+        "gif",
+        "html5",
+        "3rd-party-tag"
+      ],
+      "device": "desktop",
+      "family": "tactical",
+      "primary": false,
+      "$comment": "120 px of height fits one row only: the strip layout in lib/templates/banner.ts lays out logo, headline and CTA side by side and drops the body line. The body limit is kept generous so including this format does not tighten the copy written for the whole set.",
+      "textLimits": {
+        "headline": 50,
+        "body": 110,
         "cta": 22
       }
     },
@@ -162,7 +349,14 @@
         "3rd-party-tag"
       ],
       "device": "desktop",
+      "family": "special",
       "primary": false,
+      "alternateSizes": [
+        {
+          "width": 980,
+          "height": 600
+        }
+      ],
       "textLimits": {
         "headline": 65,
         "body": 130,
@@ -170,10 +364,10 @@
       }
     },
     {
-      "id": "tapetti",
-      "name": "Tapetti",
+      "id": "paraati-tapetti",
+      "name": "Paraati + tapetti",
       "width": 1600,
-      "height": 1200,
+      "height": 1150,
       "maxFileSizeKb": 400,
       "acceptedTypes": [
         "jpg",
@@ -183,6 +377,7 @@
         "3rd-party-tag"
       ],
       "device": "desktop",
+      "family": "special",
       "primary": false,
       "textLimits": {
         "headline": 70,
@@ -200,9 +395,9 @@
       "maxAnimationSeconds": 15
     },
     {
-      "id": "performance-display-html5",
-      "baseFormat": "performance-display",
-      "name": "Performance Display HTML5 (animated)",
+      "id": "paraati-crossdevice-html5",
+      "baseFormat": "paraati-crossdevice",
+      "name": "Paraati crossdevice HTML5 (animated)",
       "maxFileSizeKb": 300,
       "maxAnimationSeconds": 15
     }
