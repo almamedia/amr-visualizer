@@ -1,7 +1,7 @@
 /**
  * AMS Advertising Onboarding.
  *
- * Welcome → URL → Brand → Goal → Timeline → Audience → Budget → Plan.
+ * URL → Brand → Goal → Timeline → Audience → Budget → Plan.
  *
  * The order matters. We read the advertiser's website, tell them who we think
  * they are, and get that confirmed before asking a single question about the
@@ -77,7 +77,6 @@ export function meta(_: Route.MetaArgs) {
 }
 
 type Step =
-  | "welcome"
   | "url"
   | "brand"
   | "goal"
@@ -99,7 +98,6 @@ type Step =
  * advertiser does wait on the scrape once, on the brand step.
  */
 const ORDER: Step[] = [
-  "welcome",
   "url",
   "brand",
   "goal",
@@ -160,7 +158,7 @@ const EMPTY_BUSINESS: ConfirmedBusiness = {
 };
 
 export default function OnboardingPage() {
-  const [step, setStep] = useState<Step>("welcome");
+  const [step, setStep] = useState<Step>("url");
   const [answers, setAnswers] = useState<FlowAnswers>(EMPTY_ANSWERS);
   const [analysis, setAnalysis] = useState<AnalysisState>({
     status: "idle",
@@ -334,8 +332,6 @@ export default function OnboardingPage() {
 
       {stepIndex >= 0 && <Progress index={stepIndex} total={steps.length} />}
 
-      {step === "welcome" && <Welcome onStart={next} />}
-
       {step === "url" && (
         <UrlStep
           url={answers.url}
@@ -430,7 +426,7 @@ export default function OnboardingPage() {
             setCohortMatches([]);
             cohortSeen.current = [];
             cohortEverReady.current = false;
-            go("welcome");
+            go("url");
           }}
         />
       )}
@@ -544,21 +540,6 @@ function Nav({
 }
 
 // ------------------------------------------------------------- step 0
-
-function Welcome({ onStart }: { onStart: () => void }) {
-  const c = flow.welcome;
-  return (
-    <div className="ob-card ob-hero">
-      <h1>{c.headline}</h1>
-      <p>{c.sub}</p>
-      <button type="button" onClick={onStart}>
-        {c.cta}
-      </button>
-      <span className="ob-noaccount">{c.noAccount}</span>
-      <p className="ob-credibility">{c.credibility}</p>
-    </div>
-  );
-}
 
 // ------------------------------------------------------------- step 1
 
@@ -894,14 +875,16 @@ function AudienceStep({
       <fieldset className="ob-fieldset">
         <legend className="ob-legend">{c.typeQuestion}</legend>
 
-        {cohortStatus === "loading" && (
+        {cohortStatus === "loading" && visibleCandidates.length === 0 && (
           <p className="ob-sub" role="status">
             <span className="spinner" /> Please wait a moment as target
             audiences are fit for your campaign…
           </p>
         )}
 
-        {cohortsOn && cohortStatus === "ready" && (
+        {cohortsOn &&
+          (cohortStatus === "ready" ||
+            (cohortStatus === "loading" && visibleCandidates.length > 0)) && (
           <>
             <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
               Best fit for your business — pick as many as apply.
@@ -925,9 +908,16 @@ function AudienceStep({
               <button
                 type="button"
                 className="outline"
+                disabled={cohortStatus === "loading"}
                 onClick={() => fetchCohorts(remainingSlots())}
               >
-                Refresh best-fit segments
+                {cohortStatus === "loading" ? (
+                  <>
+                    <span className="spinner" /> Finding more…
+                  </>
+                ) : (
+                  "Refresh best-fit segments"
+                )}
               </button>
 
               <div className="ob-field" style={{ marginTop: "var(--space-2)" }}>
@@ -1241,9 +1231,10 @@ function BrandStep({
 
         <div className="ob-field full">
           <label htmlFor="ob-sell">What you sell or offer</label>
-          <input
+          <textarea
             id="ob-sell"
-            type="text"
+            className="ob-sell"
+            rows={2}
             value={business.productsOrServices}
             onChange={(e) => set("productsOrServices", e.target.value)}
           />
@@ -1308,7 +1299,11 @@ function BrandStep({
         onNext={onNext}
         onBack={onBack}
         nextLabel="That's us — next question"
-        nextDisabled={!business.businessName.trim()}
+        // Content type drives the channel recommendation and the ad copy, so
+        // an empty one quietly degrades everything after this step.
+        nextDisabled={
+          !business.businessName.trim() || !business.contentType.trim()
+        }
       />
       <Tip>
         A recommendation is only as good as what it knows about you. The two
