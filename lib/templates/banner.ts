@@ -27,7 +27,7 @@ export interface BannerInput {
   clickMacro?: string;
 }
 
-type Layout = "wide" | "square" | "tall";
+type Layout = "strip" | "wide" | "square" | "tall";
 
 /** Map font names onto system fonts — no external font loads,
  *  koska Alma laskee ulkoiset fontit tiedostokokorajaan. */
@@ -50,6 +50,11 @@ function fontStack(name: string): string {
 
 function pickLayout(w: number, h: number): Layout {
   const r = w / h;
+  // Yläpaikka is 980 x 120: a letterbox the wide layout cannot hold. Stacked
+  // logo, headline, body and CTA need roughly 260 px of height, so at 120 the
+  // top and bottom are simply cut off. A strip lays the same elements out in
+  // one row and drops the body line, which is the only thing that fits.
+  if (h <= 200 && r >= 3.5) return "strip";
   if (r >= 1.6) return "wide";
   if (r >= 0.85) return "square";
   return "tall";
@@ -199,10 +204,15 @@ export function renderBannerHtml(input: BannerInput): string {
   const { width: w, height: h, brand, copy, imageDataUri, logoDataUri } = input;
   const layout = pickLayout(w, h);
 
-  const ref = layout === "wide" ? 980 : layout === "square" ? 600 : 300;
+  const strip = layout === "strip";
+  const ref = layout === "square" ? 600 : layout === "tall" ? 300 : 980;
   const scale = w / ref;
 
-  const pad = Math.round(Math.max(14, Math.min(w, h) * 0.065));
+  // A strip is bounded by its height, not its width: everything sits on one
+  // line, so the line's height is what every size has to be derived from.
+  const pad = strip
+    ? Math.round(h * 0.13)
+    : Math.round(Math.max(14, Math.min(w, h) * 0.065));
   const size = (base: number) => Math.max(9, Math.round(base * scale));
 
   const hasImage = Boolean(imageDataUri);
@@ -223,20 +233,35 @@ export function renderBannerHtml(input: BannerInput): string {
   // Otherwise a large empty area is left and the message reads as thin.
   const fill = hasImage ? 1 : 1.24;
 
-  const headlineSize = Math.round(
-    (layout === "wide" ? size(40) : layout === "square" ? size(34) : size(26)) *
-      fill
-  );
+  const headlineSize = strip
+    ? Math.max(12, Math.round(h * 0.26))
+    : Math.round(
+        (layout === "wide"
+          ? size(40)
+          : layout === "square"
+            ? size(34)
+            : size(26)) * fill
+      );
   const bodySize = Math.round(
     (layout === "wide" ? size(17) : layout === "square" ? size(16) : size(14)) *
       (hasImage ? 1 : 1.12)
   );
-  const ctaSize = Math.round(
-    (layout === "wide" ? size(16) : layout === "square" ? size(15) : size(14)) *
-      (hasImage ? 1 : 1.08)
-  );
-  const logoH =
-    layout === "wide" ? size(34) : layout === "square" ? size(30) : size(24);
+  const ctaSize = strip
+    ? Math.max(9, Math.round(h * 0.14))
+    : Math.round(
+        (layout === "wide"
+          ? size(16)
+          : layout === "square"
+            ? size(15)
+            : size(14)) * (hasImage ? 1 : 1.08)
+      );
+  const logoH = strip
+    ? Math.max(12, Math.round(h * 0.3))
+    : layout === "wide"
+      ? size(34)
+      : layout === "square"
+        ? size(30)
+        : size(24);
 
   const colors = resolveBannerColors(brand, hasImage);
   const bg = colors.ground;
@@ -249,7 +274,7 @@ export function renderBannerHtml(input: BannerInput): string {
 
   // Kuvapinnan osuus layoutin mukaan.
   const mediaPct =
-    layout === "wide" ? 44 : layout === "square" ? 46 : 38;
+    strip ? 24 : layout === "wide" ? 44 : layout === "square" ? 46 : 38;
 
   const a = input.animated;
   const anim = (name: string, delay: number, dur = 0.6) =>
@@ -271,7 +296,7 @@ export function renderBannerHtml(input: BannerInput): string {
   // Ilman kuvaa teksti saa koko pinnan.
   const contentFlex = hasImage ? `flex:0 0 ${100 - mediaPct}%;` : "flex:1 1 100%;";
 
-  const flexDir = layout === "wide" ? "row" : "column";
+  const flexDir = layout === "wide" || strip ? "row" : "column";
 
   return `<!doctype html>
 <html lang="fi">
@@ -300,7 +325,7 @@ export function renderBannerHtml(input: BannerInput): string {
   .media{
     flex:0 0 ${mediaPct}%;
     position:relative;overflow:hidden;
-    ${layout === "wide" ? "order:2;" : "order:1;"}
+    ${layout === "wide" || strip ? "order:2;" : "order:1;"}
   }
   .img{
     position:absolute;inset:0;
@@ -316,7 +341,7 @@ export function renderBannerHtml(input: BannerInput): string {
   .media::after{
     content:"";position:absolute;z-index:1;
     ${
-      layout === "wide"
+      layout === "wide" || strip
         ? `top:0;bottom:0;left:0;width:${Math.max(2, Math.round(3 * scale))}px;`
         : `left:0;right:0;bottom:0;height:${Math.max(2, Math.round(3 * scale))}px;`
     }
@@ -324,17 +349,19 @@ export function renderBannerHtml(input: BannerInput): string {
   }
   .content{
     ${contentFlex}
-    ${layout === "wide" ? "order:1;" : "order:2;"}
-    display:flex;flex-direction:column;
-    justify-content:center;
-    padding:${pad}px;
-    gap:${Math.round(pad * 0.42)}px;
+    ${layout === "wide" || strip ? "order:1;" : "order:2;"}
+    display:flex;flex-direction:${strip ? "row" : "column"};
+    ${strip ? "align-items:center;" : ""}
+    justify-content:${strip ? "flex-start" : "center"};
+    padding:${strip ? `0 ${pad}px` : `${pad}px`};
+    gap:${Math.round(strip ? pad * 0.9 : pad * 0.42)}px;
     position:relative;z-index:2;
     min-width:0;
     overflow:hidden;
   }
   .logo{
-    height:${logoH}px;width:auto;max-width:62%;
+    height:${logoH}px;width:auto;max-width:${strip ? "22%" : "62%"};
+    ${strip ? "flex:0 0 auto;" : ""}
     object-fit:contain;object-position:left center;
     ${anim("fadeUp", 0)}
   }
@@ -354,17 +381,20 @@ export function renderBannerHtml(input: BannerInput): string {
     /* Last resort: if a compound word will not fit even at the smallest size,
        it breaks within the line rather than being clipped at the edge. */
     overflow-wrap:anywhere;
+    ${strip ? "flex:1 1 auto;min-width:0;overflow:hidden;" : ""}
     ${anim("fadeUp", 0.25)}
   }
   p.body{
+    ${strip ? "display:none;" : ""}
     font-size:${bodySize}px;
     line-height:1.4;
     opacity:.86;
     ${anim("fadeUp", 0.45)}
   }
   .cta{
-    align-self:flex-start;
-    margin-top:${Math.round(pad * 0.25)}px;
+    align-self:${strip ? "center" : "flex-start"};
+    ${strip ? "flex:0 0 auto;" : ""}
+    margin-top:${strip ? 0 : Math.round(pad * 0.25)}px;
     background:${ctaBg};
     color:${ctaText};
     font-size:${ctaSize}px;
