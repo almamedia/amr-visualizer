@@ -10,12 +10,7 @@ import type { BrandCard } from "../types";
 
 // ------------------------------------------------------------ step answers
 
-export type GoalId =
-  | "traffic"
-  | "awareness"
-  | "event"
-  | "local"
-  | "online-sales";
+export type GoalId = "awareness" | "conversion" | "local";
 
 export type StartMode = "asap" | "date";
 
@@ -39,14 +34,35 @@ export interface TimelineAnswer {
   duration: DurationId;
 }
 
+/** One row from Alma's private audience taxonomy (cohorts.json). */
+export interface Cohort {
+  id: string;
+  /** "Automotive>Car buying intent>High" — Alma's own hierarchy, English, "ALMA - " stripped. */
+  path: string;
+  liveAudienceSize: number;
+}
+
+/** A cohort Claude judged a fit, with the reasoning and channel mapping attached. */
+export interface CohortMatch {
+  cohort: Cohort;
+  /** One sentence, specific to this business — not a restatement of the cohort's name. */
+  whyItFits: string;
+  /** Which of the 5 fixed audience types this cohort counts as, for channel weighting. */
+  typeId: AudienceTypeId;
+}
+
 export interface AudienceAnswer {
   geography: GeographyMode;
-  /** Region id when geography is "region". */
-  regionId: string;
-  /** Free-text city when geography is "city". */
-  city: string;
-  /** Max 2 (PRD §7 step 4). */
+  /** Official region ids when geography is "region". */
+  regionIds: string[];
+  /** City names when geography is "city". */
+  cities: string[];
+  /** Max 2 (PRD §7 step 4). Derived from `cohorts` when cohort matching is active. */
   types: AudienceTypeId[];
+  /** Selected cohorts from Alma's taxonomy, when cohorts.json is available. Max 2, mirrors `types`. */
+  cohorts: CohortMatch[];
+  /** Free text describing the target audience further, used to sharpen cohort matching. */
+  enrichment: string;
 }
 
 export interface BudgetAnswer {
@@ -77,6 +93,10 @@ export interface BusinessSignals {
   businessName: string;
   /** Free-form industry label, e.g. "dental clinic". */
   industry: string;
+  /** IAB Content Taxonomy 3.1 Name inferred from the site. */
+  contentType: string;
+  /** Next-best IAB names shown as dropdown alternatives. */
+  contentTypeAlternatives: string[];
   /** Coarse bucket the recommendation engine can branch on. */
   category:
     | "real-estate"
@@ -87,11 +107,15 @@ export interface BusinessSignals {
   /** One plain-language sentence about the business. */
   summary: string;
   productsOrServices: string;
-  /** City or region name found on the site, "" when none. */
+  /** City, country, or "Global" — the most specific level the site supports. */
   geographicSignal: string;
+  /** Next-best operating areas shown as dropdown alternatives. */
+  geographicAlternatives: string[];
+  /** How specific geographicSignal is. Empty when none was found. */
+  geographicKind: "city" | "country" | "global" | "";
   /** Site sells online (cart, shop, product pages). */
   ecommerce: boolean;
-  /** True when the site presents itself as serving all of Finland. */
+  /** True when the site presents itself as serving all of Finland, or globally. */
   national: boolean;
   /** Audience hints found in the copy, e.g. ["families"]. */
   audienceSignals: string[];
@@ -103,8 +127,11 @@ export interface BusinessSignals {
 export interface ConfirmedBusiness {
   businessName: string;
   industry: string;
+  contentType: string;
+  contentTypeAlternatives: string[];
   productsOrServices: string;
   location: string;
+  locationAlternatives: string[];
 }
 
 export type AnalysisStatus = "idle" | "running" | "ready" | "failed";
@@ -154,9 +181,14 @@ export interface BudgetTierOption {
 
 export interface RegionOption {
   id: string;
+  /** English name from the official list of Finnish regions. */
   name: string;
+  /** Finnish name (maakunta), shown as a hint when it differs. */
+  finnishName: string;
   /** Share of a national audience reachable in this region, 0–1. */
   audienceShare: number;
+  /** Extra city / language terms used to match website geography. */
+  aliases?: string[];
 }
 
 export interface ChannelProfile {
@@ -287,6 +319,8 @@ export interface CreativeBrief {
     /** Where the ad clicks through to — the site onboarding started from. */
     clickUrl: string;
   };
+  /** Free text the advertiser added about their audience, when they gave any. */
+  audienceNotes?: string;
   /** Carried straight through so the studio need not re-scrape. */
   brand: BrandCard | null;
 }

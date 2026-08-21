@@ -40,7 +40,7 @@ export function buildCreativeBrief(
   answers: FlowAnswers,
   business: ConfirmedBusiness,
   recommendation: Recommendation,
-  brand: BrandCard | null
+  brand: BrandCard | null,
 ): CreativeBrief {
   // The booking half of the brief. Everything here was previously dropped at
   // the handoff, which left the adserver step with no dates, no budget and no
@@ -54,13 +54,15 @@ export function buildCreativeBrief(
   return {
     version: 2,
     businessName: business.businessName,
-    industry: business.industry,
+    industry: business.contentType || business.industry,
     productsOrServices: business.productsOrServices,
     goal: { id: answers.goal ?? "awareness", label: goalLabel(answers.goal) },
     targetRegion: business.location || targetPlace(answers),
-    audienceTypes: answers.audience.types.map(
-      (t) => getAudienceTypeOption(t).label
-    ),
+    // Cohort names are more specific than the 5 static labels, so they take
+    // over the field when the advertiser picked from Alma's own taxonomy.
+    audienceTypes: answers.audience.cohorts.length
+      ? answers.audience.cohorts.map((c) => c.cohort.path)
+      : answers.audience.types.map((t) => getAudienceTypeOption(t).label),
     channels: recommendation.channels.map((c) => ({
       id: c.channel.id,
       name: c.channel.name,
@@ -86,7 +88,9 @@ export function buildCreativeBrief(
       pricingModel: primaryFormat?.pricingModel ?? "cpm",
       priceEur: primaryFormat?.priceEur ?? 0,
       regionId:
-        answers.audience.geography === "region" ? answers.audience.regionId : "",
+        answers.audience.geography === "region"
+          ? answers.audience.regionId
+          : "",
       channelIds: recommendation.channels.map((c) => c.channel.id),
       // The address the user typed on the URL step — the same one the brand
       // analysis ran against. Empty when they skipped that step, in which case
@@ -94,13 +98,24 @@ export function buildCreativeBrief(
       clickUrl: answers.url || brand?.sourceUrl || "",
     },
     brand,
+    audienceNotes: answers.audience.enrichment.trim() || undefined,
+    brand: brand
+      ? {
+          ...brand,
+          contentType: business.contentType || brand.contentType,
+          contentTypeAlternatives:
+            business.contentTypeAlternatives.length > 0
+              ? business.contentTypeAlternatives
+              : brand.contentTypeAlternatives,
+        }
+      : null,
   };
 }
 
 /** Plain-text version for the "send this to my email" option (PRD §7 6h). */
 export function briefAsText(
   business: ConfirmedBusiness,
-  recommendation: Recommendation
+  recommendation: Recommendation,
 ): string {
   const lines = [
     `Advertising recommendation for ${business.businessName || "your business"}`,
@@ -110,16 +125,17 @@ export function briefAsText(
     "Recommended channels:",
     ...recommendation.channels.map(
       (c) =>
-        `  - ${c.channel.name} (${Math.round(c.budgetShare * 100)}% of budget) — ${c.channel.whyItFits}`
+        `  - ${c.channel.name} (${Math.round(c.budgetShare * 100)}% of budget) — ${c.channel.whyItFits}`,
     ),
     "",
     "Recommended ad formats:",
     ...recommendation.formats.map(
-      (f) => `  - ${f.format.smeName}, ${f.format.dimensions} — ${f.format.pricingCopy}`
+      (f) =>
+        `  - ${f.format.smeName}, ${f.format.dimensions} — ${f.format.pricingCopy}`,
     ),
     "",
     `Estimated monthly ${recommendation.reach.unit}: ${recommendation.reach.low.toLocaleString(
-      "en-GB"
+      "en-GB",
     )}–${recommendation.reach.high.toLocaleString("en-GB")}`,
     `Budget: ${recommendation.budget.display}`,
     "",

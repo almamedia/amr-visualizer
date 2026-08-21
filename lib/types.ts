@@ -63,7 +63,10 @@ export interface BrandCard {
   description: string;
   /** Tone of voice, e.g. "Warm and expert". */
   tone: string;
-  industry: string;
+  /** IAB Content Taxonomy 3.1 Name, inferred from the site. */
+  contentType: string;
+  /** Next-best IAB names the user can switch to from the dropdown. */
+  contentTypeAlternatives: string[];
   logoUrl: string | null;
   colors: {
     primary: string;

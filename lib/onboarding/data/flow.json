@@ -21,29 +21,19 @@
     "tip": "The clearest goal gets the sharpest result. Advertisers who focus on one objective at a time consistently outperform those trying to do everything at once.",
     "options": [
       {
-        "id": "traffic",
-        "label": "Drive more people to my website",
-        "hint": "Reach people who are ready to browse and buy"
-      },
-      {
         "id": "awareness",
-        "label": "Increase awareness of my business",
+        "label": "Increase awareness",
         "hint": "Build recognition so people think of you first"
       },
       {
-        "id": "event",
-        "label": "Promote an event or offer",
-        "hint": "Reach a large audience quickly with a time-limited message"
+        "id": "conversion",
+        "label": "Drive conversion",
+        "hint": "Turn interest into visits, enquiries, and sales"
       },
       {
         "id": "local",
-        "label": "Grow my local customer base",
+        "label": "Grow my local business",
         "hint": "Reach people in your area who are looking for what you offer"
-      },
-      {
-        "id": "online-sales",
-        "label": "Drive online sales",
-        "hint": "Convert browsers into buyers with targeted reach"
       }
     ]
   },
@@ -105,13 +95,13 @@
       },
       {
         "id": "region",
-        "label": "A specific region",
-        "hint": "Choose the area you serve"
+        "label": "Specific regions",
+        "hint": "Choose one or more areas you serve"
       },
       {
         "id": "city",
-        "label": "A specific city",
-        "hint": "Best for a single location or storefront"
+        "label": "Specific cities",
+        "hint": "Best for storefronts or a few locations"
       }
     ],
     "typeOptions": [

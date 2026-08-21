@@ -22,6 +22,7 @@ import {
   formatRequirements,
   goalOptions,
   hasProvisionalData,
+  regionDisplayName,
   regions,
   specsUrl,
 } from "@/lib/onboarding/catalog";
@@ -42,6 +43,7 @@ import type {
   AudienceTypeId,
   BudgetTierId,
   BusinessSignals,
+  CohortMatch,
   ConfirmedBusiness,
   DurationId,
   FlowAnswers,
@@ -49,6 +51,19 @@ import type {
   GoalId,
   StartMode,
 } from "@/lib/onboarding/types";
+import type { BrandCard } from "@/lib/types";
+import { ContentTypeSelect } from "@/app/components/content-type-select";
+import { LocationSelect } from "@/app/components/location-select";
+import { MultiSelect } from "@/app/components/multi-select";
+import {
+  categoryFromContentType,
+  resolveContentTypePicks,
+} from "@/lib/content-taxonomy";
+import {
+  isNationalReach,
+  locationKind,
+  resolveLocationPicks,
+} from "@/lib/geography";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -103,29 +118,45 @@ function questionSteps(urlSkipped: boolean): Step[] {
 /** Past this the scrape is treated as a failure and the flow moves on. */
 const ANALYSIS_TIMEOUT_MS = 30000;
 
-/** Industry buckets shown on the confirmation card. */
-const CATEGORY_OPTIONS: { id: BusinessSignals["category"]; label: string }[] = [
-  { id: "local-services", label: "Local services" },
-  { id: "ecommerce", label: "Online shop" },
-  { id: "b2b-professional", label: "Business and professional services" },
-  { id: "real-estate", label: "Property and housing" },
-  { id: "other", label: "Something else" },
-];
+/**
+ * Cohort matching (PRD §7 step 4 upgrade) lives at page level, not inside
+ * AudienceStep, for the same reason `analysis` does: the step unmounts when
+ * the advertiser moves to another step, and anything kept as its own local
+ * state would be lost — meaning a return visit would re-fetch from a clean
+ * slate and could show cards that duplicate what's already selected.
+ */
+type CohortStatus = "idle" | "loading" | "ready" | "unavailable";
+
+/** How many cohort cards the grid holds at once — selected ones move out of it. */
+const COHORT_SLOTS = 5;
+
+/** Past this a hung cohort fetch is treated as unavailable, same idea as ANALYSIS_TIMEOUT_MS. */
+const COHORTS_TIMEOUT_MS = 15000;
 
 const EMPTY_ANSWERS: FlowAnswers = {
   url: "",
   urlSkipped: false,
   goal: null,
   timeline: { startMode: "asap", startDate: "", duration: "1-month" },
-  audience: { geography: "finland", regionId: "helsinki-uusimaa", city: "", types: [] },
+  audience: {
+    geography: "finland",
+    regionIds: [],
+    cities: [],
+    types: [],
+    cohorts: [],
+    enrichment: "",
+  },
   budget: { tier: "small", customEur: null },
 };
 
 const EMPTY_BUSINESS: ConfirmedBusiness = {
   businessName: "",
   industry: "",
+  contentType: "",
+  contentTypeAlternatives: [],
   productsOrServices: "",
   location: "",
+  locationAlternatives: [],
 };
 
 export default function OnboardingPage() {
@@ -141,6 +172,94 @@ export default function OnboardingPage() {
   const [business, setBusiness] = useState<ConfirmedBusiness>(EMPTY_BUSINESS);
   const [category, setCategory] =
     useState<BusinessSignals["category"]>("other");
+
+  // The advertiser's own corrections from the brand step, not the raw scrape —
+  // every later step that reasons about the business (cohort matching, the
+  // final recommendation) sees what they confirmed, not what we first read.
+  const effectiveSignals = useMemo<BusinessSignals | null>(() => {
+    if (!analysis.signals) return null;
+    return {
+      ...analysis.signals,
+      businessName: business.businessName,
+      industry: business.contentType || business.industry,
+      contentType: business.contentType,
+      contentTypeAlternatives: business.contentTypeAlternatives,
+      productsOrServices: business.productsOrServices,
+      geographicSignal: business.location,
+      geographicAlternatives: business.locationAlternatives,
+      geographicKind: locationKind(business.location),
+      national: isNationalReach(business.location),
+      category,
+    };
+  }, [analysis.signals, business, category]);
+
+  // ---- cohort matching (PRD §7 step 4 upgrade) -----------------------------
+  // Lifted to page level so it survives the advertiser leaving and returning
+  // to the audience step. `matches` only ever holds unselected candidates in
+  // spirit — AudienceStep derives what's shown by filtering out whatever is
+  // already selected, so nothing here needs to track that distinction.
+  const [cohortStatus, setCohortStatus] = useState<CohortStatus>("idle");
+  const [cohortMatches, setCohortMatches] = useState<CohortMatch[]>([]);
+  const cohortSeen = useRef<string[]>([]);
+  // Only the very first fetch is allowed to fall back to the static list on
+  // failure — once cohorts have loaded once, a later failed Refresh must
+  // leave whatever is already selected alone rather than discarding it.
+  const cohortEverReady = useRef(false);
+
+  const fetchCohorts = useCallback(
+    (limit: number) => {
+      setCohortStatus("loading");
+      fetch("/api/cohorts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          signals: effectiveSignals,
+          goal: answers.goal,
+          regionId: answers.audience.regionIds.join(" "),
+          city: answers.audience.cities.join(" "),
+          enrichment: answers.audience.enrichment,
+          exclude: cohortSeen.current,
+          limit,
+        }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          const next: CohortMatch[] = Array.isArray(data?.matches)
+            ? data.matches
+            : [];
+          if (next.length === 0 && !cohortEverReady.current) {
+            setCohortStatus("unavailable");
+            setCohortMatches([]);
+            return;
+          }
+          cohortEverReady.current = true;
+          cohortSeen.current = [...cohortSeen.current, ...next.map((m) => m.cohort.id)];
+          setCohortMatches(next);
+          setCohortStatus("ready");
+        })
+        .catch(() => {
+          setCohortStatus(cohortEverReady.current ? "ready" : "unavailable");
+          if (!cohortEverReady.current) setCohortMatches([]);
+        });
+    },
+    [
+      effectiveSignals,
+      answers.goal,
+      answers.audience.regionIds,
+      answers.audience.cities,
+      answers.audience.enrichment,
+    ]
+  );
+
+  useEffect(() => {
+    if (cohortStatus !== "loading") return;
+    const t = setTimeout(() => {
+      setCohortStatus((s) =>
+        s === "loading" ? (cohortEverReady.current ? "ready" : "unavailable") : s
+      );
+    }, COHORTS_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [cohortStatus]);
 
   const patch = useCallback(
     (part: Partial<FlowAnswers>) => setAnswers((a) => ({ ...a, ...part })),
@@ -239,9 +358,15 @@ export default function OnboardingPage() {
         <BrandStep
           analysis={analysis}
           business={business}
-          category={category}
           onBusinessChange={setBusiness}
           onCategoryChange={setCategory}
+          onBrandColorChange={(key, hex) =>
+            setAnalysis((a) =>
+              a.brand
+                ? { ...a, brand: { ...a.brand, colors: { ...a.brand.colors, [key]: hex } } }
+                : a
+            )
+          }
           onNext={next}
           onBack={back}
           onRetry={() => startAnalysis(answers.url)}
@@ -271,6 +396,9 @@ export default function OnboardingPage() {
         <AudienceStep
           value={answers.audience}
           suggestedRegion={suggestedRegionId(analysis.signals)}
+          cohortStatus={cohortStatus}
+          matches={cohortMatches}
+          fetchCohorts={fetchCohorts}
           onChange={(audience) => patch({ audience })}
           onNext={next}
           onBack={back}
@@ -290,14 +418,18 @@ export default function OnboardingPage() {
         <RecommendationStep
           answers={answers}
           analysis={analysis}
+          signals={effectiveSignals}
           business={business}
-          category={category}
           onBack={back}
           onRestart={() => {
             setAnswers(EMPTY_ANSWERS);
             setAnalysis({ status: "idle", signals: null, brand: null });
             setBusiness(EMPTY_BUSINESS);
             setCategory("other");
+            setCohortStatus("idle");
+            setCohortMatches([]);
+            cohortSeen.current = [];
+            cohortEverReady.current = false;
             go("welcome");
           }}
         />
@@ -506,7 +638,7 @@ function GoalStep({
       <h2 className="ob-q">{c.question}</h2>
       <p className="ob-sub">Pick the one that matters most right now.</p>
 
-      <div className="ob-options">
+      <div className="ob-options stacked">
         {goalOptions.map((g) => (
           <OptionCard
             key={g.id}
@@ -605,12 +737,18 @@ const MAX_AUDIENCE_TYPES = 2;
 function AudienceStep({
   value,
   suggestedRegion,
+  cohortStatus,
+  matches,
+  fetchCohorts,
   onChange,
   onNext,
   onBack,
 }: {
   value: FlowAnswers["audience"];
   suggestedRegion: string | null;
+  cohortStatus: CohortStatus;
+  matches: CohortMatch[];
+  fetchCohorts: (limit: number) => void;
   onChange: (v: FlowAnswers["audience"]) => void;
   onNext: () => void;
   onBack: () => void;
@@ -622,31 +760,73 @@ function AudienceStep({
   useEffect(() => {
     if (applied.current || !suggestedRegion) return;
     applied.current = true;
-    onChange({ ...value, geography: "region", regionId: suggestedRegion });
+    onChange({ ...value, geography: "region", regionIds: [suggestedRegion] });
     // Only ever runs on the first suggestion; value is intentionally not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestedRegion]);
 
-  const full = value.types.length >= MAX_AUDIENCE_TYPES;
+  const remainingSlots = () => Math.max(1, COHORT_SLOTS - value.cohorts.length);
+
+  // Fires exactly once, the first time this step is ever reached — a return
+  // visit finds cohortStatus already past "idle" (lifted to page level) and
+  // does nothing, so this never re-fetches on its own. From here on, a fetch
+  // only happens when Refresh is clicked.
+  useEffect(() => {
+    if (cohortStatus === "idle") fetchCohorts(remainingSlots());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cohortsOn = cohortStatus !== "unavailable";
+  const staticFull = value.types.length >= MAX_AUDIENCE_TYPES;
 
   const toggleType = (id: AudienceTypeId) => {
     const has = value.types.includes(id);
-    if (!has && full) return;
+    if (!has && staticFull) return;
     onChange({
       ...value,
       types: has ? value.types.filter((t) => t !== id) : [...value.types, id],
     });
   };
 
+  // `matches` (page-level state) is never mutated here — a candidate that's
+  // been selected simply gets filtered out of what's displayed, and removing
+  // a selection un-filters it again automatically. Refresh replacing
+  // `matches` wholesale therefore can't disturb a selection either way.
+  const visibleCandidates = matches.filter(
+    (m) => !value.cohorts.some((x) => x.cohort.id === m.cohort.id)
+  );
+
+  const selectCohort = (m: CohortMatch) => {
+    const cohorts = [...value.cohorts, m];
+    onChange({
+      ...value,
+      cohorts,
+      // Cohorts carry a typeId so recommend.ts's channel weighting needs no
+      // changes — cohorts are a richer front-end for the same engine.
+      types: Array.from(new Set(cohorts.map((x) => x.typeId))),
+    });
+  };
+
+  const removeCohort = (m: CohortMatch) => {
+    const cohorts = value.cohorts.filter((x) => x.cohort.id !== m.cohort.id);
+    onChange({
+      ...value,
+      cohorts,
+      types: Array.from(new Set(cohorts.map((x) => x.typeId))),
+    });
+  };
+
   const ready =
-    value.geography === "finland" ||
-    (value.geography === "region" && Boolean(value.regionId)) ||
-    (value.geography === "city" && Boolean(value.city.trim()));
+    (value.geography === "finland" ||
+      (value.geography === "region" && value.regionIds.length > 0) ||
+      (value.geography === "city" && value.cities.length > 0)) &&
+    (cohortsOn ? value.cohorts.length > 0 : value.types.length > 0);
 
   const prefilled =
     suggestedRegion !== null &&
     value.geography === "region" &&
-    value.regionId === suggestedRegion;
+    value.regionIds.length === 1 &&
+    value.regionIds[0] === suggestedRegion;
 
   return (
     <div className="ob-card">
@@ -670,20 +850,20 @@ function AudienceStep({
 
         {value.geography === "region" && (
           <div className="ob-field" style={{ marginTop: "var(--space-3)" }}>
-            <label htmlFor="ob-region">Region</label>
-            <select
+            <label htmlFor="ob-region">Regions</label>
+            <MultiSelect
               id="ob-region"
-              value={value.regionId}
-              onChange={(e) => onChange({ ...value, regionId: e.target.value })}
-            >
-              {regions
-                .filter((r) => r.id !== "finland")
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-            </select>
+              label="Regions"
+              values={value.regionIds}
+              options={regions.map((r) => ({
+                value: r.id,
+                label: regionDisplayName(r),
+              }))}
+              placeholder="Select one or more regions"
+              searchPlaceholder="Search regions"
+              emptyText="No matching regions."
+              onChange={(regionIds) => onChange({ ...value, regionIds })}
+            />
             {prefilled && (
               <p className="ob-sub" style={{ margin: "var(--space-2) 0 0" }}>
                 Based on your website. Change it if that&rsquo;s not right.
@@ -694,46 +874,129 @@ function AudienceStep({
 
         {value.geography === "city" && (
           <div className="ob-field" style={{ marginTop: "var(--space-3)" }}>
-            <label htmlFor="ob-city">City</label>
-            <input
+            <label htmlFor="ob-city">Cities</label>
+            <MultiSelect
               id="ob-city"
-              type="text"
-              list="ob-cities"
-              value={value.city}
-              placeholder="Start typing…"
-              onChange={(e) => onChange({ ...value, city: e.target.value })}
+              label="Cities"
+              values={value.cities}
+              options={cities.map((city) => ({ value: city, label: city }))}
+              placeholder="Select one or more cities"
+              searchPlaceholder="Search cities"
+              emptyText="No matching cities."
+              allowCustom
+              customLabel={(q) => `Add “${q}”`}
+              onChange={(next) => onChange({ ...value, cities: next })}
             />
-            <datalist id="ob-cities">
-              {cities.map((city) => (
-                <option key={city} value={city} />
-              ))}
-            </datalist>
           </div>
         )}
       </fieldset>
 
       <fieldset className="ob-fieldset">
         <legend className="ob-legend">{c.typeQuestion}</legend>
-        <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
-          {c.typeHelper}
-          {full ? " — that's two, unpick one to swap." : ""}
-        </p>
-        <div className="ob-options two">
-          {audienceTypeOptions.map((t) => {
-            const selected = value.types.includes(t.id);
-            return (
-              <OptionCard
-                key={t.id}
-                selected={selected}
-                label={t.label}
-                hint={t.hint}
-                disabled={!selected && full}
-                onClick={() => toggleType(t.id)}
-              />
-            );
-          })}
-        </div>
+
+        {cohortStatus === "loading" && (
+          <p className="ob-sub" role="status">
+            <span className="spinner" /> Please wait a moment as target
+            audiences are fit for your campaign…
+          </p>
+        )}
+
+        {cohortsOn && cohortStatus === "ready" && (
+          <>
+            <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
+              Best fit for your business — pick as many as apply.
+            </p>
+
+            {visibleCandidates.length > 0 && (
+              <div className="ob-options two">
+                {visibleCandidates.map((m) => (
+                  <OptionCard
+                    key={m.cohort.id}
+                    selected={false}
+                    label={m.cohort.path.split(">").pop() ?? m.cohort.path}
+                    hint={m.whyItFits}
+                    onClick={() => selectCohort(m)}
+                  />
+                ))}
+              </div>
+            )}
+
+            <div style={{ marginTop: "var(--space-3)" }}>
+              <button
+                type="button"
+                className="outline"
+                onClick={() => fetchCohorts(remainingSlots())}
+              >
+                Refresh best-fit segments
+              </button>
+
+              <div className="ob-field" style={{ marginTop: "var(--space-2)" }}>
+                <label htmlFor="ob-enrich">
+                  Tell us more about your customers
+                </label>
+                <textarea
+                  id="ob-enrich"
+                  rows={2}
+                  value={value.enrichment}
+                  placeholder="e.g. mostly first-time buyers, or people planning a renovation"
+                  onChange={(e) =>
+                    onChange({ ...value, enrichment: e.target.value })
+                  }
+                />
+                <p className="ob-sub" style={{ margin: "var(--space-1) 0 0" }}>
+                  Used the next time you hit Refresh.
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+
+        {!cohortsOn && (
+          <>
+            <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
+              {c.typeHelper}
+              {staticFull ? " — that's two, unpick one to swap." : ""}
+            </p>
+            <div className="ob-options two">
+              {audienceTypeOptions.map((t) => {
+                const selected = value.types.includes(t.id);
+                return (
+                  <OptionCard
+                    key={t.id}
+                    selected={selected}
+                    label={t.label}
+                    hint={t.hint}
+                    disabled={!selected && staticFull}
+                    onClick={() => toggleType(t.id)}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
       </fieldset>
+
+      {cohortsOn && value.cohorts.length > 0 && (
+        <div>
+          <p className="ob-legend" style={{ marginBottom: "var(--space-2)" }}>
+            Your target audiences
+          </p>
+          <ul className="ob-selected-list">
+            {value.cohorts.map((m) => (
+              <li key={m.cohort.id} className="ob-selected-chip">
+                <span>{m.cohort.path.split(">").pop() ?? m.cohort.path}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${m.cohort.path}`}
+                  onClick={() => removeCohort(m)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <Nav onNext={onNext} onBack={onBack} nextDisabled={!ready} />
       <Tip>{c.tip}</Tip>
@@ -821,25 +1084,28 @@ function BudgetStep({
  * a campaign. Nothing downstream — not the recommendation, not the ad copy —
  * runs on data they have not looked at.
  *
- * Brand assets are shown, not edited. Cropping a logo or dropping a photo is
- * work for the asset studio, which already does it well; here the only
- * question is whether we understood the business.
+ * Logo and photos are shown, not edited here — cropping a logo or dropping a
+ * photo is work for the asset studio, which already does it well. Colours are
+ * the one brand asset that gets a fix on this step: a scraped colour is a
+ * guess, and if it's wrong every downstream step (and the ad itself) inherits
+ * the mistake, so it's cheaper to correct it here than to notice it in the
+ * studio.
  */
 function BrandStep({
   analysis,
   business,
-  category,
   onBusinessChange,
   onCategoryChange,
+  onBrandColorChange,
   onNext,
   onBack,
   onRetry,
 }: {
   analysis: AnalysisState;
   business: ConfirmedBusiness;
-  category: BusinessSignals["category"];
   onBusinessChange: (b: ConfirmedBusiness) => void;
   onCategoryChange: (c: BusinessSignals["category"]) => void;
+  onBrandColorChange: (key: keyof BrandCard["colors"], hex: string) => void;
   onNext: () => void;
   onBack: () => void;
   onRetry: () => void;
@@ -850,17 +1116,33 @@ function BrandStep({
   // advertiser owns these fields and a re-render must not overwrite them.
   const seeded = useRef(false);
   useEffect(() => {
-    if (seeded.current || !signals) return;
+    if (seeded.current || (!signals && !brand)) return;
     seeded.current = true;
+    const content = resolveContentTypePicks(
+      brand?.contentType || signals?.contentType || signals?.industry || "",
+      brand?.contentTypeAlternatives ??
+        signals?.contentTypeAlternatives ??
+        []
+    );
+    const geo = resolveLocationPicks(
+      signals?.geographicSignal || "",
+      signals?.geographicAlternatives ?? []
+    );
     onBusinessChange({
-      businessName: signals.businessName,
-      industry: signals.industry,
-      productsOrServices: signals.productsOrServices,
-      location: signals.geographicSignal,
+      businessName: signals?.businessName || brand?.companyName || "",
+      industry: content.contentType || signals?.industry || "",
+      contentType: content.contentType,
+      contentTypeAlternatives: content.contentTypeAlternatives,
+      productsOrServices:
+        signals?.productsOrServices || brand?.description || "",
+      location: geo.location,
+      locationAlternatives: geo.locationAlternatives,
     });
-    onCategoryChange(signals.category);
+    onCategoryChange(
+      signals?.category ?? categoryFromContentType(content.contentType)
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signals]);
+  }, [signals, brand]);
 
   if (status === "running") {
     return (
@@ -879,7 +1161,7 @@ function BrandStep({
     );
   }
 
-  if (status === "failed" || !signals) {
+  if (!signals && !brand) {
     return (
       <div className="ob-card">
         <h2 className="ob-q">We couldn&rsquo;t read your site</h2>
@@ -910,9 +1192,9 @@ function BrandStep({
 
   const palette = brand
     ? ([
-        ["Primary", brand.colors.primary],
-        ["Accent", brand.colors.accent],
-        ["Secondary", brand.colors.secondary],
+        ["primary", "Primary", brand.colors.primary],
+        ["accent", "Accent", brand.colors.accent],
+        ["secondary", "Secondary", brand.colors.secondary],
       ] as const)
     : [];
   const photoCount = brand?.images.filter((i) => i.enabled).length ?? 0;
@@ -925,7 +1207,7 @@ function BrandStep({
         — is built on this. Correct anything that&rsquo;s off.
       </p>
 
-      {signals.summary && <p className="ob-summary">{signals.summary}</p>}
+      {signals?.summary && <p className="ob-summary">{signals.summary}</p>}
 
       <div className="ob-confirm-grid" style={{ marginTop: "var(--space-4)" }}>
         <div className="ob-field">
@@ -939,20 +1221,22 @@ function BrandStep({
         </div>
 
         <div className="ob-field">
-          <label htmlFor="ob-cat">Industry</label>
-          <select
-            id="ob-cat"
-            value={category}
-            onChange={(e) =>
-              onCategoryChange(e.target.value as BusinessSignals["category"])
-            }
-          >
-            {CATEGORY_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <label htmlFor="content-type">Content type</label>
+          <ContentTypeSelect
+            value={business.contentType}
+            alternatives={business.contentTypeAlternatives}
+            onChange={(next) => {
+              onBusinessChange({
+                ...business,
+                contentType: next.contentType,
+                contentTypeAlternatives: next.contentTypeAlternatives,
+                industry: next.contentType,
+              });
+              if (next.contentType) {
+                onCategoryChange(categoryFromContentType(next.contentType));
+              }
+            }}
+          />
         </div>
 
         <div className="ob-field full">
@@ -967,12 +1251,17 @@ function BrandStep({
 
         <div className="ob-field full">
           <label htmlFor="ob-loc">Where you operate</label>
-          <input
+          <LocationSelect
             id="ob-loc"
-            type="text"
             value={business.location}
-            onChange={(e) => set("location", e.target.value)}
-            placeholder="A city, a region, or all of Finland"
+            alternatives={business.locationAlternatives}
+            onChange={(next) =>
+              onBusinessChange({
+                ...business,
+                location: next.location,
+                locationAlternatives: next.locationAlternatives,
+              })
+            }
           />
         </div>
       </div>
@@ -987,12 +1276,14 @@ function BrandStep({
               </div>
             )}
             <div className="ob-swatches">
-              {palette.map(([label, hex]) => (
-                <div className="ob-swatch" key={label}>
-                  <span
+              {palette.map(([key, label, hex]) => (
+                <div className="ob-swatch" key={key}>
+                  <input
+                    type="color"
                     className="ob-swatch-chip"
-                    style={{ background: hex }}
-                    aria-hidden="true"
+                    value={hex}
+                    onChange={(e) => onBrandColorChange(key, e.target.value)}
+                    aria-label={`${label} colour`}
                   />
                   <span className="ob-swatch-label">
                     {label}
@@ -1007,8 +1298,8 @@ function BrandStep({
             {photoCount > 0
               ? `Plus ${photoCount} photo${photoCount === 1 ? "" : "s"} from your site. `
               : ""}
-            You&rsquo;ll be able to change any of this when you make the ad —
-            that comes after the plan.
+            Got a colour wrong? Click a swatch to fix it. The logo and photos
+            can be changed when you make the ad — that comes after the plan.
           </p>
         </div>
       )}
@@ -1033,37 +1324,23 @@ function BrandStep({
 function RecommendationStep({
   answers,
   analysis,
+  signals,
   business,
-  category,
   onBack,
   onRestart,
 }: {
   answers: FlowAnswers;
   analysis: AnalysisState;
+  signals: BusinessSignals | null;
   business: ConfirmedBusiness;
-  category: BusinessSignals["category"];
   onBack: () => void;
   onRestart: () => void;
 }) {
   const c = flow.recommendationStep;
 
-  // The advertiser already corrected this on the brand step, so their version
-  // is what the engine sees — not what we originally read off the page.
-  const effectiveSignals = useMemo<BusinessSignals | null>(() => {
-    if (!analysis.signals) return null;
-    return {
-      ...analysis.signals,
-      businessName: business.businessName,
-      industry: business.industry,
-      productsOrServices: business.productsOrServices,
-      geographicSignal: business.location,
-      category,
-    };
-  }, [analysis.signals, business, category]);
-
   const recommendation = useMemo(
-    () => recommend(answers, effectiveSignals),
-    [answers, effectiveSignals]
+    () => recommend(answers, signals),
+    [answers, signals]
   );
 
   return (
