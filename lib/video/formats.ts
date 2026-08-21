@@ -1,7 +1,11 @@
 import { getFormat, specs } from "../specs";
 
 /** The first demo deliberately covers a wide, a tall and a compact placement. */
-export const VIDEO_FORMAT_IDS = ["paraati", "pystyparaati", "boksi"] as const;
+export const VIDEO_FORMAT_IDS = [
+  "paraati",
+  "suurtaulu",
+  "boksit-crossdevice",
+] as const;
 
 export type VideoFormatId = (typeof VIDEO_FORMAT_IDS)[number];
 
