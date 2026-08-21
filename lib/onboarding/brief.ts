@@ -34,9 +34,11 @@ export function buildCreativeBrief(
     productsOrServices: business.productsOrServices,
     goal: { id: answers.goal ?? "awareness", label: goalLabel(answers.goal) },
     targetRegion: business.location || targetPlace(answers),
-    audienceTypes: answers.audience.types.map(
-      (t) => getAudienceTypeOption(t).label
-    ),
+    // Cohort names are more specific than the 5 static labels, so they take
+    // over the field when the advertiser picked from Alma's own taxonomy.
+    audienceTypes: answers.audience.cohorts.length
+      ? answers.audience.cohorts.map((c) => c.cohort.path)
+      : answers.audience.types.map((t) => getAudienceTypeOption(t).label),
     channels: recommendation.channels.map((c) => ({
       id: c.channel.id,
       name: c.channel.name,
@@ -51,6 +53,7 @@ export function buildCreativeBrief(
       specFormatId: f.format.specFormatId,
     })),
     budgetTier: getBudgetTier(answers.budget.tier).name,
+    audienceNotes: answers.audience.enrichment.trim() || undefined,
     brand,
   };
 }

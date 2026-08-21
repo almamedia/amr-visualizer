@@ -318,9 +318,16 @@ const GOAL_PHRASE: Record<GoalId, string> = {
 function buildSummary(answers: FlowAnswers): string {
   const goal = answers.goal ? GOAL_PHRASE[answers.goal] : "grow your business";
   const place = targetPlace(answers);
-  const types = answers.audience.types
-    .map((t) => getAudienceTypeOption(t).label.toLowerCase())
-    .join(" and ");
+  // Cohort names are what the advertiser actually picked — more specific than
+  // the 5 generic buckets those cohorts collapse to for channel weighting, so
+  // the summary should say the real thing, not the bucket it maps to.
+  const types = answers.audience.cohorts.length
+    ? answers.audience.cohorts
+        .map((c) => c.cohort.path.split(">").pop() ?? c.cohort.path)
+        .join(", ")
+    : answers.audience.types
+        .map((t) => getAudienceTypeOption(t).label.toLowerCase())
+        .join(" and ");
   const who = types ? `, targeting ${types}` : "";
   const duration = getDurationOption(resolvedDuration(answers)).label.toLowerCase();
   const tier = getBudgetTier(answers.budget.tier);

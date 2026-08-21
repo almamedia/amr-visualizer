@@ -2,7 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ScrapeResult } from "./scrape";
 import type { BrandCard, CopyVariant, GoalId, TextLimits } from "./types";
 import { getGoal } from "./specs";
-import type { BusinessSignals } from "./onboarding/types";
+import type {
+  AudienceTypeId,
+  BusinessSignals,
+  Cohort,
+  CohortMatch,
+  GoalId as OnboardingGoalId,
+} from "./onboarding/types";
+import { prepareCohortCandidates } from "./onboarding/cohorts";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -665,4 +672,103 @@ function normalizeSignals(r: Partial<BusinessSignals>): BusinessSignals | null {
       ? Math.min(1, Math.max(0, confidence))
       : 0,
   };
+}
+
+// ------------------------------------------------------ onboarding: cohorts
+
+/**
+ * Onboarding microsite (PRD §7 step 4 upgrade): rank Alma's own audience
+ * segments (cohorts.json) against a business, instead of the 5 static
+ * audience-type buttons. Unlike the rest of onboarding this genuinely needs
+ * an AI reasoner — the taxonomy has ~700 free-form, Finnish-described rows
+ * with no category or keyword fields to score against deterministically.
+ *
+ * Returns null whenever there is nothing to rank: no key, no cohorts.json,
+ * or a bad response — the audience step falls back to the static list.
+ */
+
+const TYPE_IDS = new Set<AudienceTypeId>([
+  "general-consumers",
+  "business-decision-makers",
+  "homeowners-families",
+  "young-adults",
+  "high-income",
+]);
+
+const COHORTS_SYSTEM = `You match a small business to the most relevant audience segments from Alma's own audience taxonomy, for an advertising recommendation engine.
+
+You are given the business's profile and a list of candidate segments (id and category path only, one per line, tab-separated). Pick the ones a media planner would actually target this business against.
+
+Reply with JSON ONLY, no explanation and no code fences:
+{ "matches": [ { "id": string, "whyItFits": string, "typeId": "general-consumers" | "business-decision-makers" | "homeowners-families" | "young-adults" | "high-income" } ] }
+
+Rules:
+- Return exactly as many matches as asked for, best fit first, or fewer only if the list has nothing else sensible.
+- "id" must be copied exactly from a candidate in the list. Never invent one.
+- "whyItFits" is one short plain-English sentence specific to this business — not a restatement of the segment's name.
+- "typeId" is whichever of the five given values the segment is closest to, used only for budget and channel weighting.
+- A geo segment (path starting "Geo>") is only worth including if it reflects where this business actually wants to reach people — skip it otherwise.
+- Any concrete demographic or numeric criterion in <advertiser-notes> (age, income, life stage, education, household type, etc.) is a strong, literal filter — check it against every "Socio>" segment for a real match, not just an approximate one. An age range like "18-45" must surface every "Socio>Age Group" segment whose range overlaps it at all (e.g. 18-24, 25-34, 35-44 all overlap "18-45"), not just one.
+- If nothing in the list is a sensible fit, return an empty "matches" array. Do not force a match.`;
+
+interface CohortsResponse {
+  matches: { id: string; whyItFits: string; typeId: string }[];
+}
+
+export async function matchCohorts(
+  signals: BusinessSignals | null,
+  goal: OnboardingGoalId | null,
+  regionId: string,
+  city: string,
+  enrichment: string,
+  exclude: string[],
+  limit: number
+): Promise<CohortMatch[] | null> {
+  if (!hasApiKey()) return null;
+
+  const prepared = prepareCohortCandidates({ regionId, city, enrichment, exclude });
+  if (!prepared) return null;
+
+  const user = `Business category: ${signals?.category ?? "unknown"}
+What they sell: ${signals?.productsOrServices || "unknown"}
+Summary: ${signals?.summary || "unknown"}
+Audience hints from their site: ${(signals?.audienceSignals ?? []).join(", ") || "none"}
+Campaign goal: ${goal ?? "not chosen yet"}
+
+<advertiser-notes>
+${enrichment || "(none given)"}
+</advertiser-notes>
+
+Return up to ${limit} matches.
+
+<candidate-segments>
+${prepared.promptBlock}
+</candidate-segments>`;
+
+  try {
+    const r = await askJson<CohortsResponse>(COHORTS_SYSTEM, user, 1200, "medium");
+    return normalizeCohortMatches(r, prepared.byId, limit);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCohortMatches(
+  r: CohortsResponse,
+  byId: Map<string, Cohort>,
+  limit: number
+): CohortMatch[] {
+  const matches = Array.isArray(r?.matches) ? r.matches : [];
+  return matches
+    .map((m): CohortMatch | null => {
+      const cohort = byId.get(String(m?.id));
+      const whyItFits = clean(m?.whyItFits);
+      if (!cohort || !whyItFits) return null;
+      const typeId = TYPE_IDS.has(m?.typeId as AudienceTypeId)
+        ? (m.typeId as AudienceTypeId)
+        : "general-consumers";
+      return { cohort, whyItFits, typeId };
+    })
+    .filter((m): m is CohortMatch => m !== null)
+    .slice(0, limit);
 }

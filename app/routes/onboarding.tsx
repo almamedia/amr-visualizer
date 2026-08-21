@@ -42,6 +42,7 @@ import type {
   AudienceTypeId,
   BudgetTierId,
   BusinessSignals,
+  CohortMatch,
   ConfirmedBusiness,
   DurationId,
   FlowAnswers,
@@ -104,6 +105,21 @@ function questionSteps(urlSkipped: boolean): Step[] {
 /** Past this the scrape is treated as a failure and the flow moves on. */
 const ANALYSIS_TIMEOUT_MS = 30000;
 
+/**
+ * Cohort matching (PRD §7 step 4 upgrade) lives at page level, not inside
+ * AudienceStep, for the same reason `analysis` does: the step unmounts when
+ * the advertiser moves to another step, and anything kept as its own local
+ * state would be lost — meaning a return visit would re-fetch from a clean
+ * slate and could show cards that duplicate what's already selected.
+ */
+type CohortStatus = "idle" | "loading" | "ready" | "unavailable";
+
+/** How many cohort cards the grid holds at once — selected ones move out of it. */
+const COHORT_SLOTS = 5;
+
+/** Past this a hung cohort fetch is treated as unavailable, same idea as ANALYSIS_TIMEOUT_MS. */
+const COHORTS_TIMEOUT_MS = 15000;
+
 /** Industry buckets shown on the confirmation card. */
 const CATEGORY_OPTIONS: { id: BusinessSignals["category"]; label: string }[] = [
   { id: "local-services", label: "Local services" },
@@ -118,7 +134,14 @@ const EMPTY_ANSWERS: FlowAnswers = {
   urlSkipped: false,
   goal: null,
   timeline: { startMode: "asap", startDate: "", duration: "1-month" },
-  audience: { geography: "finland", regionId: "helsinki-uusimaa", city: "", types: [] },
+  audience: {
+    geography: "finland",
+    regionId: "helsinki-uusimaa",
+    city: "",
+    types: [],
+    cohorts: [],
+    enrichment: "",
+  },
   budget: { tier: "small", customEur: null },
 };
 
@@ -142,6 +165,89 @@ export default function OnboardingPage() {
   const [business, setBusiness] = useState<ConfirmedBusiness>(EMPTY_BUSINESS);
   const [category, setCategory] =
     useState<BusinessSignals["category"]>("other");
+
+  // The advertiser's own corrections from the brand step, not the raw scrape —
+  // every later step that reasons about the business (cohort matching, the
+  // final recommendation) sees what they confirmed, not what we first read.
+  const effectiveSignals = useMemo<BusinessSignals | null>(() => {
+    if (!analysis.signals) return null;
+    return {
+      ...analysis.signals,
+      businessName: business.businessName,
+      industry: business.industry,
+      productsOrServices: business.productsOrServices,
+      geographicSignal: business.location,
+      category,
+    };
+  }, [analysis.signals, business, category]);
+
+  // ---- cohort matching (PRD §7 step 4 upgrade) -----------------------------
+  // Lifted to page level so it survives the advertiser leaving and returning
+  // to the audience step. `matches` only ever holds unselected candidates in
+  // spirit — AudienceStep derives what's shown by filtering out whatever is
+  // already selected, so nothing here needs to track that distinction.
+  const [cohortStatus, setCohortStatus] = useState<CohortStatus>("idle");
+  const [cohortMatches, setCohortMatches] = useState<CohortMatch[]>([]);
+  const cohortSeen = useRef<string[]>([]);
+  // Only the very first fetch is allowed to fall back to the static list on
+  // failure — once cohorts have loaded once, a later failed Refresh must
+  // leave whatever is already selected alone rather than discarding it.
+  const cohortEverReady = useRef(false);
+
+  const fetchCohorts = useCallback(
+    (limit: number) => {
+      setCohortStatus("loading");
+      fetch("/api/cohorts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          signals: effectiveSignals,
+          goal: answers.goal,
+          regionId: answers.audience.regionId,
+          city: answers.audience.city,
+          enrichment: answers.audience.enrichment,
+          exclude: cohortSeen.current,
+          limit,
+        }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          const next: CohortMatch[] = Array.isArray(data?.matches)
+            ? data.matches
+            : [];
+          if (next.length === 0 && !cohortEverReady.current) {
+            setCohortStatus("unavailable");
+            setCohortMatches([]);
+            return;
+          }
+          cohortEverReady.current = true;
+          cohortSeen.current = [...cohortSeen.current, ...next.map((m) => m.cohort.id)];
+          setCohortMatches(next);
+          setCohortStatus("ready");
+        })
+        .catch(() => {
+          setCohortStatus(cohortEverReady.current ? "ready" : "unavailable");
+          if (!cohortEverReady.current) setCohortMatches([]);
+        });
+    },
+    [
+      effectiveSignals,
+      answers.goal,
+      answers.audience.regionId,
+      answers.audience.city,
+      answers.audience.enrichment,
+    ]
+  );
+
+  useEffect(() => {
+    if (cohortStatus !== "loading") return;
+    const t = setTimeout(() => {
+      setCohortStatus((s) =>
+        s === "loading" ? (cohortEverReady.current ? "ready" : "unavailable") : s
+      );
+    }, COHORTS_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [cohortStatus]);
 
   const patch = useCallback(
     (part: Partial<FlowAnswers>) => setAnswers((a) => ({ ...a, ...part })),
@@ -279,6 +385,9 @@ export default function OnboardingPage() {
         <AudienceStep
           value={answers.audience}
           suggestedRegion={suggestedRegionId(analysis.signals)}
+          cohortStatus={cohortStatus}
+          matches={cohortMatches}
+          fetchCohorts={fetchCohorts}
           onChange={(audience) => patch({ audience })}
           onNext={next}
           onBack={back}
@@ -298,14 +407,18 @@ export default function OnboardingPage() {
         <RecommendationStep
           answers={answers}
           analysis={analysis}
+          signals={effectiveSignals}
           business={business}
-          category={category}
           onBack={back}
           onRestart={() => {
             setAnswers(EMPTY_ANSWERS);
             setAnalysis({ status: "idle", signals: null, brand: null });
             setBusiness(EMPTY_BUSINESS);
             setCategory("other");
+            setCohortStatus("idle");
+            setCohortMatches([]);
+            cohortSeen.current = [];
+            cohortEverReady.current = false;
             go("welcome");
           }}
         />
@@ -613,12 +726,18 @@ const MAX_AUDIENCE_TYPES = 2;
 function AudienceStep({
   value,
   suggestedRegion,
+  cohortStatus,
+  matches,
+  fetchCohorts,
   onChange,
   onNext,
   onBack,
 }: {
   value: FlowAnswers["audience"];
   suggestedRegion: string | null;
+  cohortStatus: CohortStatus;
+  matches: CohortMatch[];
+  fetchCohorts: (limit: number) => void;
   onChange: (v: FlowAnswers["audience"]) => void;
   onNext: () => void;
   onBack: () => void;
@@ -635,21 +754,62 @@ function AudienceStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestedRegion]);
 
-  const full = value.types.length >= MAX_AUDIENCE_TYPES;
+  const remainingSlots = () => Math.max(1, COHORT_SLOTS - value.cohorts.length);
+
+  // Fires exactly once, the first time this step is ever reached — a return
+  // visit finds cohortStatus already past "idle" (lifted to page level) and
+  // does nothing, so this never re-fetches on its own. From here on, a fetch
+  // only happens when Refresh is clicked.
+  useEffect(() => {
+    if (cohortStatus === "idle") fetchCohorts(remainingSlots());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cohortsOn = cohortStatus !== "unavailable";
+  const staticFull = value.types.length >= MAX_AUDIENCE_TYPES;
 
   const toggleType = (id: AudienceTypeId) => {
     const has = value.types.includes(id);
-    if (!has && full) return;
+    if (!has && staticFull) return;
     onChange({
       ...value,
       types: has ? value.types.filter((t) => t !== id) : [...value.types, id],
     });
   };
 
+  // `matches` (page-level state) is never mutated here — a candidate that's
+  // been selected simply gets filtered out of what's displayed, and removing
+  // a selection un-filters it again automatically. Refresh replacing
+  // `matches` wholesale therefore can't disturb a selection either way.
+  const visibleCandidates = matches.filter(
+    (m) => !value.cohorts.some((x) => x.cohort.id === m.cohort.id)
+  );
+
+  const selectCohort = (m: CohortMatch) => {
+    const cohorts = [...value.cohorts, m];
+    onChange({
+      ...value,
+      cohorts,
+      // Cohorts carry a typeId so recommend.ts's channel weighting needs no
+      // changes — cohorts are a richer front-end for the same engine.
+      types: Array.from(new Set(cohorts.map((x) => x.typeId))),
+    });
+  };
+
+  const removeCohort = (m: CohortMatch) => {
+    const cohorts = value.cohorts.filter((x) => x.cohort.id !== m.cohort.id);
+    onChange({
+      ...value,
+      cohorts,
+      types: Array.from(new Set(cohorts.map((x) => x.typeId))),
+    });
+  };
+
   const ready =
-    value.geography === "finland" ||
-    (value.geography === "region" && Boolean(value.regionId)) ||
-    (value.geography === "city" && Boolean(value.city.trim()));
+    (value.geography === "finland" ||
+      (value.geography === "region" && Boolean(value.regionId)) ||
+      (value.geography === "city" && Boolean(value.city.trim()))) &&
+    (cohortsOn ? value.cohorts.length > 0 : value.types.length > 0);
 
   const prefilled =
     suggestedRegion !== null &&
@@ -722,26 +882,110 @@ function AudienceStep({
 
       <fieldset className="ob-fieldset">
         <legend className="ob-legend">{c.typeQuestion}</legend>
-        <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
-          {c.typeHelper}
-          {full ? " — that's two, unpick one to swap." : ""}
-        </p>
-        <div className="ob-options two">
-          {audienceTypeOptions.map((t) => {
-            const selected = value.types.includes(t.id);
-            return (
-              <OptionCard
-                key={t.id}
-                selected={selected}
-                label={t.label}
-                hint={t.hint}
-                disabled={!selected && full}
-                onClick={() => toggleType(t.id)}
-              />
-            );
-          })}
-        </div>
+
+        {cohortStatus === "loading" && (
+          <p className="ob-sub" role="status">
+            <span className="spinner" /> Please wait a moment as target
+            audiences are fit for your campaign…
+          </p>
+        )}
+
+        {cohortsOn && cohortStatus === "ready" && (
+          <>
+            <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
+              Best fit for your business — pick as many as apply.
+            </p>
+
+            {visibleCandidates.length > 0 && (
+              <div className="ob-options two">
+                {visibleCandidates.map((m) => (
+                  <OptionCard
+                    key={m.cohort.id}
+                    selected={false}
+                    label={m.cohort.path.split(">").pop() ?? m.cohort.path}
+                    hint={m.whyItFits}
+                    onClick={() => selectCohort(m)}
+                  />
+                ))}
+              </div>
+            )}
+
+            <div style={{ marginTop: "var(--space-3)" }}>
+              <button
+                type="button"
+                className="outline"
+                onClick={() => fetchCohorts(remainingSlots())}
+              >
+                Refresh best-fit segments
+              </button>
+
+              <div className="ob-field" style={{ marginTop: "var(--space-2)" }}>
+                <label htmlFor="ob-enrich">
+                  Tell us more about your customers
+                </label>
+                <textarea
+                  id="ob-enrich"
+                  rows={2}
+                  value={value.enrichment}
+                  placeholder="e.g. mostly first-time buyers, or people planning a renovation"
+                  onChange={(e) =>
+                    onChange({ ...value, enrichment: e.target.value })
+                  }
+                />
+                <p className="ob-sub" style={{ margin: "var(--space-1) 0 0" }}>
+                  Used the next time you hit Refresh.
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+
+        {!cohortsOn && (
+          <>
+            <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
+              {c.typeHelper}
+              {staticFull ? " — that's two, unpick one to swap." : ""}
+            </p>
+            <div className="ob-options two">
+              {audienceTypeOptions.map((t) => {
+                const selected = value.types.includes(t.id);
+                return (
+                  <OptionCard
+                    key={t.id}
+                    selected={selected}
+                    label={t.label}
+                    hint={t.hint}
+                    disabled={!selected && staticFull}
+                    onClick={() => toggleType(t.id)}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
       </fieldset>
+
+      {cohortsOn && value.cohorts.length > 0 && (
+        <div>
+          <p className="ob-legend" style={{ marginBottom: "var(--space-2)" }}>
+            Your target audiences
+          </p>
+          <ul className="ob-selected-list">
+            {value.cohorts.map((m) => (
+              <li key={m.cohort.id} className="ob-selected-chip">
+                <span>{m.cohort.path.split(">").pop() ?? m.cohort.path}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${m.cohort.path}`}
+                  onClick={() => removeCohort(m)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <Nav onNext={onNext} onBack={onBack} nextDisabled={!ready} />
       <Tip>{c.tip}</Tip>
@@ -1048,37 +1292,23 @@ function BrandStep({
 function RecommendationStep({
   answers,
   analysis,
+  signals,
   business,
-  category,
   onBack,
   onRestart,
 }: {
   answers: FlowAnswers;
   analysis: AnalysisState;
+  signals: BusinessSignals | null;
   business: ConfirmedBusiness;
-  category: BusinessSignals["category"];
   onBack: () => void;
   onRestart: () => void;
 }) {
   const c = flow.recommendationStep;
 
-  // The advertiser already corrected this on the brand step, so their version
-  // is what the engine sees — not what we originally read off the page.
-  const effectiveSignals = useMemo<BusinessSignals | null>(() => {
-    if (!analysis.signals) return null;
-    return {
-      ...analysis.signals,
-      businessName: business.businessName,
-      industry: business.industry,
-      productsOrServices: business.productsOrServices,
-      geographicSignal: business.location,
-      category,
-    };
-  }, [analysis.signals, business, category]);
-
   const recommendation = useMemo(
-    () => recommend(answers, effectiveSignals),
-    [answers, effectiveSignals]
+    () => recommend(answers, signals),
+    [answers, signals]
   );
 
   return (
