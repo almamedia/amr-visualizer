@@ -10,6 +10,8 @@ import type {
 import { BRIEF_STORAGE_KEY } from "@/lib/onboarding/brief";
 import type { CreativeBrief, GoalId as BriefGoalId } from "@/lib/onboarding/types";
 import { renderBannerHtml } from "@/lib/templates/banner";
+import { normalizeBrandContentType } from "@/lib/content-taxonomy";
+import { ContentTypeSelect } from "@/app/components/content-type-select";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -27,11 +29,9 @@ type Phase = "input" | "brand" | "results";
 /** Onboarding goal → studio campaign goal. Onboarding speaks the advertiser's
  *  language ("drive online sales"); the studio speaks the spec library's. */
 const GOAL_FROM_BRIEF: Record<BriefGoalId, GoalId> = {
-  traffic: "awareness",
   awareness: "awareness",
-  event: "offer",
+  conversion: "offer",
   local: "awareness",
-  "online-sales": "offer",
 };
 
 const GOALS: { id: GoalId; name: string; hint: string }[] = [
@@ -109,7 +109,7 @@ export default function Studio() {
       if (wanted.length) setFormatIds(wanted);
 
       if (incoming.brand) {
-        setBrand(incoming.brand);
+        setBrand(normalizeBrandContentType(incoming.brand));
         setUrl(incoming.brand.sourceUrl);
         setPhase("brand");
       }
@@ -132,7 +132,7 @@ export default function Studio() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed.");
 
-      setBrand(data.brand);
+      setBrand(normalizeBrandContentType(data.brand));
       setAiEnabled(data.meta?.aiEnabled ?? true);
       setWarnings(data.brand?.warnings ?? []);
       setPhase("brand");
@@ -726,12 +726,17 @@ function BrandEditor({
               </p>
             </div>
             <div style={{ flex: 1 }}>
-              <label htmlFor="industry">Industry</label>
-              <input
-                id="industry"
-                type="text"
-                value={brand.industry}
-                onChange={(e) => set("industry", e.target.value)}
+              <label htmlFor="content-type">Content type</label>
+              <ContentTypeSelect
+                value={brand.contentType}
+                alternatives={brand.contentTypeAlternatives}
+                onChange={(next) =>
+                  onChange({
+                    ...brand,
+                    contentType: next.contentType,
+                    contentTypeAlternatives: next.contentTypeAlternatives,
+                  })
+                }
               />
             </div>
           </div>

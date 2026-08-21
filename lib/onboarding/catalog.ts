@@ -55,6 +55,18 @@ export function getRegion(id: string): RegionOption | undefined {
   return regions.find((x) => x.id === id);
 }
 
+export function getRegions(ids: string[]): RegionOption[] {
+  return ids
+    .map((id) => getRegion(id))
+    .filter((r): r is RegionOption => Boolean(r));
+}
+
+/** English / Finnish when they differ, otherwise the shared name. */
+export function regionDisplayName(region: RegionOption): string {
+  if (region.name === region.finnishName) return region.finnishName;
+  return `${region.name} / ${region.finnishName}`;
+}
+
 export function getGoalOption(id: string): GoalOption | undefined {
   return goalOptions.find((g) => g.id === id);
 }

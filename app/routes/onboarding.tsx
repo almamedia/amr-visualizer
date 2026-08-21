@@ -22,6 +22,7 @@ import {
   formatRequirements,
   goalOptions,
   hasProvisionalData,
+  regionDisplayName,
   regions,
   specsUrl,
 } from "@/lib/onboarding/catalog";
@@ -51,6 +52,18 @@ import type {
   StartMode,
 } from "@/lib/onboarding/types";
 import type { BrandCard } from "@/lib/types";
+import { ContentTypeSelect } from "@/app/components/content-type-select";
+import { LocationSelect } from "@/app/components/location-select";
+import { MultiSelect } from "@/app/components/multi-select";
+import {
+  categoryFromContentType,
+  resolveContentTypePicks,
+} from "@/lib/content-taxonomy";
+import {
+  isNationalReach,
+  locationKind,
+  resolveLocationPicks,
+} from "@/lib/geography";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -120,15 +133,6 @@ const COHORT_SLOTS = 5;
 /** Past this a hung cohort fetch is treated as unavailable, same idea as ANALYSIS_TIMEOUT_MS. */
 const COHORTS_TIMEOUT_MS = 15000;
 
-/** Industry buckets shown on the confirmation card. */
-const CATEGORY_OPTIONS: { id: BusinessSignals["category"]; label: string }[] = [
-  { id: "local-services", label: "Local services" },
-  { id: "ecommerce", label: "Online shop" },
-  { id: "b2b-professional", label: "Business and professional services" },
-  { id: "real-estate", label: "Property and housing" },
-  { id: "other", label: "Something else" },
-];
-
 const EMPTY_ANSWERS: FlowAnswers = {
   url: "",
   urlSkipped: false,
@@ -136,8 +140,8 @@ const EMPTY_ANSWERS: FlowAnswers = {
   timeline: { startMode: "asap", startDate: "", duration: "1-month" },
   audience: {
     geography: "finland",
-    regionId: "helsinki-uusimaa",
-    city: "",
+    regionIds: [],
+    cities: [],
     types: [],
     cohorts: [],
     enrichment: "",
@@ -148,8 +152,11 @@ const EMPTY_ANSWERS: FlowAnswers = {
 const EMPTY_BUSINESS: ConfirmedBusiness = {
   businessName: "",
   industry: "",
+  contentType: "",
+  contentTypeAlternatives: [],
   productsOrServices: "",
   location: "",
+  locationAlternatives: [],
 };
 
 export default function OnboardingPage() {
@@ -174,9 +181,14 @@ export default function OnboardingPage() {
     return {
       ...analysis.signals,
       businessName: business.businessName,
-      industry: business.industry,
+      industry: business.contentType || business.industry,
+      contentType: business.contentType,
+      contentTypeAlternatives: business.contentTypeAlternatives,
       productsOrServices: business.productsOrServices,
       geographicSignal: business.location,
+      geographicAlternatives: business.locationAlternatives,
+      geographicKind: locationKind(business.location),
+      national: isNationalReach(business.location),
       category,
     };
   }, [analysis.signals, business, category]);
@@ -203,8 +215,8 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           signals: effectiveSignals,
           goal: answers.goal,
-          regionId: answers.audience.regionId,
-          city: answers.audience.city,
+          regionId: answers.audience.regionIds.join(" "),
+          city: answers.audience.cities.join(" "),
           enrichment: answers.audience.enrichment,
           exclude: cohortSeen.current,
           limit,
@@ -233,8 +245,8 @@ export default function OnboardingPage() {
     [
       effectiveSignals,
       answers.goal,
-      answers.audience.regionId,
-      answers.audience.city,
+      answers.audience.regionIds,
+      answers.audience.cities,
       answers.audience.enrichment,
     ]
   );
@@ -346,7 +358,6 @@ export default function OnboardingPage() {
         <BrandStep
           analysis={analysis}
           business={business}
-          category={category}
           onBusinessChange={setBusiness}
           onCategoryChange={setCategory}
           onBrandColorChange={(key, hex) =>
@@ -627,7 +638,7 @@ function GoalStep({
       <h2 className="ob-q">{c.question}</h2>
       <p className="ob-sub">Pick the one that matters most right now.</p>
 
-      <div className="ob-options">
+      <div className="ob-options stacked">
         {goalOptions.map((g) => (
           <OptionCard
             key={g.id}
@@ -749,7 +760,7 @@ function AudienceStep({
   useEffect(() => {
     if (applied.current || !suggestedRegion) return;
     applied.current = true;
-    onChange({ ...value, geography: "region", regionId: suggestedRegion });
+    onChange({ ...value, geography: "region", regionIds: [suggestedRegion] });
     // Only ever runs on the first suggestion; value is intentionally not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestedRegion]);
@@ -807,14 +818,15 @@ function AudienceStep({
 
   const ready =
     (value.geography === "finland" ||
-      (value.geography === "region" && Boolean(value.regionId)) ||
-      (value.geography === "city" && Boolean(value.city.trim()))) &&
+      (value.geography === "region" && value.regionIds.length > 0) ||
+      (value.geography === "city" && value.cities.length > 0)) &&
     (cohortsOn ? value.cohorts.length > 0 : value.types.length > 0);
 
   const prefilled =
     suggestedRegion !== null &&
     value.geography === "region" &&
-    value.regionId === suggestedRegion;
+    value.regionIds.length === 1 &&
+    value.regionIds[0] === suggestedRegion;
 
   return (
     <div className="ob-card">
@@ -838,20 +850,20 @@ function AudienceStep({
 
         {value.geography === "region" && (
           <div className="ob-field" style={{ marginTop: "var(--space-3)" }}>
-            <label htmlFor="ob-region">Region</label>
-            <select
+            <label htmlFor="ob-region">Regions</label>
+            <MultiSelect
               id="ob-region"
-              value={value.regionId}
-              onChange={(e) => onChange({ ...value, regionId: e.target.value })}
-            >
-              {regions
-                .filter((r) => r.id !== "finland")
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-            </select>
+              label="Regions"
+              values={value.regionIds}
+              options={regions.map((r) => ({
+                value: r.id,
+                label: regionDisplayName(r),
+              }))}
+              placeholder="Select one or more regions"
+              searchPlaceholder="Search regions"
+              emptyText="No matching regions."
+              onChange={(regionIds) => onChange({ ...value, regionIds })}
+            />
             {prefilled && (
               <p className="ob-sub" style={{ margin: "var(--space-2) 0 0" }}>
                 Based on your website. Change it if that&rsquo;s not right.
@@ -862,20 +874,19 @@ function AudienceStep({
 
         {value.geography === "city" && (
           <div className="ob-field" style={{ marginTop: "var(--space-3)" }}>
-            <label htmlFor="ob-city">City</label>
-            <input
+            <label htmlFor="ob-city">Cities</label>
+            <MultiSelect
               id="ob-city"
-              type="text"
-              list="ob-cities"
-              value={value.city}
-              placeholder="Start typing…"
-              onChange={(e) => onChange({ ...value, city: e.target.value })}
+              label="Cities"
+              values={value.cities}
+              options={cities.map((city) => ({ value: city, label: city }))}
+              placeholder="Select one or more cities"
+              searchPlaceholder="Search cities"
+              emptyText="No matching cities."
+              allowCustom
+              customLabel={(q) => `Add “${q}”`}
+              onChange={(next) => onChange({ ...value, cities: next })}
             />
-            <datalist id="ob-cities">
-              {cities.map((city) => (
-                <option key={city} value={city} />
-              ))}
-            </datalist>
           </div>
         )}
       </fieldset>
@@ -1083,7 +1094,6 @@ function BudgetStep({
 function BrandStep({
   analysis,
   business,
-  category,
   onBusinessChange,
   onCategoryChange,
   onBrandColorChange,
@@ -1093,7 +1103,6 @@ function BrandStep({
 }: {
   analysis: AnalysisState;
   business: ConfirmedBusiness;
-  category: BusinessSignals["category"];
   onBusinessChange: (b: ConfirmedBusiness) => void;
   onCategoryChange: (c: BusinessSignals["category"]) => void;
   onBrandColorChange: (key: keyof BrandCard["colors"], hex: string) => void;
@@ -1107,17 +1116,33 @@ function BrandStep({
   // advertiser owns these fields and a re-render must not overwrite them.
   const seeded = useRef(false);
   useEffect(() => {
-    if (seeded.current || !signals) return;
+    if (seeded.current || (!signals && !brand)) return;
     seeded.current = true;
+    const content = resolveContentTypePicks(
+      brand?.contentType || signals?.contentType || signals?.industry || "",
+      brand?.contentTypeAlternatives ??
+        signals?.contentTypeAlternatives ??
+        []
+    );
+    const geo = resolveLocationPicks(
+      signals?.geographicSignal || "",
+      signals?.geographicAlternatives ?? []
+    );
     onBusinessChange({
-      businessName: signals.businessName,
-      industry: signals.industry,
-      productsOrServices: signals.productsOrServices,
-      location: signals.geographicSignal,
+      businessName: signals?.businessName || brand?.companyName || "",
+      industry: content.contentType || signals?.industry || "",
+      contentType: content.contentType,
+      contentTypeAlternatives: content.contentTypeAlternatives,
+      productsOrServices:
+        signals?.productsOrServices || brand?.description || "",
+      location: geo.location,
+      locationAlternatives: geo.locationAlternatives,
     });
-    onCategoryChange(signals.category);
+    onCategoryChange(
+      signals?.category ?? categoryFromContentType(content.contentType)
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signals]);
+  }, [signals, brand]);
 
   if (status === "running") {
     return (
@@ -1136,7 +1161,7 @@ function BrandStep({
     );
   }
 
-  if (status === "failed" || !signals) {
+  if (!signals && !brand) {
     return (
       <div className="ob-card">
         <h2 className="ob-q">We couldn&rsquo;t read your site</h2>
@@ -1182,7 +1207,7 @@ function BrandStep({
         — is built on this. Correct anything that&rsquo;s off.
       </p>
 
-      {signals.summary && <p className="ob-summary">{signals.summary}</p>}
+      {signals?.summary && <p className="ob-summary">{signals.summary}</p>}
 
       <div className="ob-confirm-grid" style={{ marginTop: "var(--space-4)" }}>
         <div className="ob-field">
@@ -1196,20 +1221,22 @@ function BrandStep({
         </div>
 
         <div className="ob-field">
-          <label htmlFor="ob-cat">Industry</label>
-          <select
-            id="ob-cat"
-            value={category}
-            onChange={(e) =>
-              onCategoryChange(e.target.value as BusinessSignals["category"])
-            }
-          >
-            {CATEGORY_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <label htmlFor="content-type">Content type</label>
+          <ContentTypeSelect
+            value={business.contentType}
+            alternatives={business.contentTypeAlternatives}
+            onChange={(next) => {
+              onBusinessChange({
+                ...business,
+                contentType: next.contentType,
+                contentTypeAlternatives: next.contentTypeAlternatives,
+                industry: next.contentType,
+              });
+              if (next.contentType) {
+                onCategoryChange(categoryFromContentType(next.contentType));
+              }
+            }}
+          />
         </div>
 
         <div className="ob-field full">
@@ -1224,12 +1251,17 @@ function BrandStep({
 
         <div className="ob-field full">
           <label htmlFor="ob-loc">Where you operate</label>
-          <input
+          <LocationSelect
             id="ob-loc"
-            type="text"
             value={business.location}
-            onChange={(e) => set("location", e.target.value)}
-            placeholder="A city, a region, or all of Finland"
+            alternatives={business.locationAlternatives}
+            onChange={(next) =>
+              onBusinessChange({
+                ...business,
+                location: next.location,
+                locationAlternatives: next.locationAlternatives,
+              })
+            }
           />
         </div>
       </div>

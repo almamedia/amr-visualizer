@@ -10,6 +10,17 @@ import type {
   GoalId as OnboardingGoalId,
 } from "./onboarding/types";
 import { prepareCohortCandidates } from "./onboarding/cohorts";
+import {
+  inferContentTypeFromText,
+  resolveContentTypePicks,
+} from "./content-taxonomy";
+import {
+  GLOBAL_LOCATION,
+  inferLocationFromText,
+  isNationalReach,
+  locationKind,
+  resolveLocationPicks,
+} from "./geography";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -132,7 +143,8 @@ Reply with JSON ONLY, no explanation and no code fences. Use exactly this shape:
   "companyName": string,
   "description": string,
   "tone": string,
-  "industry": string,
+  "contentType": string,
+  "contentTypeAlternatives": [string, string, string, string],
   "logoUrl": string | null,
   "colors": { "primary": "#rrggbb", "secondary": "#rrggbb", "accent": "#rrggbb", "background": "#rrggbb", "text": "#rrggbb" },
   "fonts": { "heading": string, "body": string },
@@ -144,10 +156,11 @@ Instructions:
 - companyName: the company's name as it appears on the page. Not the slogan, not the domain.
 - description: one or two sentences on what the company does and who for. Concrete, no marketing cliché.
 - tone: tone of voice in two to four words, e.g. "Warm and expert".
-- industry: one or two words, e.g. "Hair salon".
+- contentType: the single best IAB Content Taxonomy 3.1 Name for this website (copy an official Name, e.g. "Bars & Restaurants"). Prefer the most specific matching category. Never invent a label.
+- contentTypeAlternatives: exactly four other official IAB Names — the next-closest matches, ordered closest first. No duplicates, and none equal to contentType.
 - logoUrl: pick the likeliest logo from the candidates, or null if none convinces. Prefer an image whose path or alt text says logo over a favicon. The ad is built on a light ground, so avoid reversed-out versions: if the filename contains white, nega, invert or light, choose another candidate when one is available.
-- colors: pick the real brand colours from the candidates. primary is the most recognisable brand colour. background is the light or dark ground the ad is built on. text stands clearly apart from background (contrast at least 4.5:1). accent is used on the CTA button and must stand apart from background. If no sensible colour is among the candidates, choose a neutral that suits the industry.
-- fonts: pick from the font candidates. If none fit, suggest fonts that suit the industry.
+- colors: pick the real brand colours from the candidates. primary is the most recognisable brand colour. background is the light or dark ground the ad is built on. text stands clearly apart from background (contrast at least 4.5:1). accent is used on the CTA button and must stand apart from background. If no sensible colour is among the candidates, choose a neutral that suits the content type.
+- fonts: pick from the font candidates. If none fit, suggest fonts that suit the content type.
 - imageUrls: pick two to four images suitable for advertising. The images are attached, so look at them. Return the URLs exactly as given, and use the numbering to identify them.
 
   Always reject an image that has:
@@ -164,7 +177,8 @@ interface BrandResponse {
   companyName: string;
   description: string;
   tone: string;
-  industry: string;
+  contentType: string;
+  contentTypeAlternatives: string[];
   logoUrl: string | null;
   colors: BrandCard["colors"];
   fonts: BrandCard["fonts"];
@@ -244,12 +258,20 @@ ${s.text.slice(0, 5000)}
       .slice(0, 4)
       .map((url) => ({ url, alt: known.get(url) ?? "", enabled: true }));
 
+    const content = resolveContentTypePicks(
+      clean(r.contentType),
+      Array.isArray(r.contentTypeAlternatives)
+        ? r.contentTypeAlternatives.map(clean)
+        : []
+    );
+
     return {
       sourceUrl: s.finalUrl,
       companyName: clean(r.companyName) || fallbackName(s),
       description: clean(r.description) || s.metaDescription || "",
       tone: clean(r.tone) || "Clear and straightforward",
-      industry: clean(r.industry) || "",
+      contentType: content.contentType,
+      contentTypeAlternatives: content.contentTypeAlternatives,
       logoUrl: r.logoUrl && r.logoUrl.startsWith("http") ? r.logoUrl : null,
       colors: sanitizeColors(r.colors, s),
       fonts: {
@@ -375,6 +397,11 @@ function mockBrand(s: ScrapeResult): BrandCard {
   // A missing API key is not warned about here — the UI shows its own
   // standing notice, and saying it twice helps nobody.
   const warnings = [...s.warnings];
+  const content = inferContentTypeFromText(
+    [s.title, s.ogTitle, s.metaDescription, s.ogDescription, s.text.slice(0, 4000)]
+      .filter(Boolean)
+      .join("\n")
+  );
   return {
     sourceUrl: s.finalUrl,
     companyName: fallbackName(s),
@@ -384,7 +411,8 @@ function mockBrand(s: ScrapeResult): BrandCard {
       s.text.slice(0, 180).trim() ||
       "Description missing — fill this in by hand.",
     tone: "Clear and straightforward",
-    industry: "",
+    contentType: content.contentType,
+    contentTypeAlternatives: content.contentTypeAlternatives,
     logoUrl: s.logoCandidates[0] ?? null,
     colors: guessPalette(s),
     fonts: {
@@ -437,7 +465,7 @@ export async function generateCopy(
 
   const goal = getGoal(goalId);
   const user = `Company: ${brand.companyName}
-Industry: ${brand.industry || "not known"}
+Content type: ${brand.contentType || "not known"}
 What the company does: ${brand.description}
 Tone of voice: ${brand.tone}
 
@@ -497,7 +525,7 @@ function mockCopy(
   limits: TextLimits
 ): CopyVariant[] {
   const name = brand.companyName;
-  const trade = brand.industry || "what we do";
+  const trade = brand.contentType || "what we do";
 
   const byGoal: Record<GoalId, CopyVariant[]> = {
     awareness: [
@@ -582,16 +610,20 @@ function mockCopy(
 /** Below this much visible text the page is a splash or login wall. */
 const MIN_SIGNAL_TEXT = 200;
 
-const SIGNALS_SYSTEM = `You read a scraped Finnish business website and extract structured facts about the business for an advertising recommendation engine.
+const SIGNALS_SYSTEM = `You read a scraped business website and extract structured facts about the business for an advertising recommendation engine.
 
 Return ONLY JSON:
 {
   "businessName": string,
   "industry": string,
+  "contentType": string,
+  "contentTypeAlternatives": [string, string, string, string],
   "category": "real-estate" | "b2b-professional" | "ecommerce" | "local-services" | "other",
   "summary": string,
   "productsOrServices": string,
   "geographicSignal": string,
+  "geographicKind": "city" | "country" | "global",
+  "geographicAlternatives": [string, string, string, string],
   "ecommerce": boolean,
   "national": boolean,
   "audienceSignals": string[],
@@ -601,8 +633,17 @@ Return ONLY JSON:
 Rules:
 - Write every string in English, even though the site is likely Finnish.
 - "summary" is one plain sentence a business owner would recognise as their own.
-- "geographicSignal" is the city or region the site says it serves, or "" if the site does not say.
-- "national" is true only if the site claims to serve customers across Finland.
+- "contentType" is the single best IAB Content Taxonomy 3.1 Name for this website (e.g. "Bars & Restaurants", "Real Estate Buying and Selling"). Use an official Name, as specific as possible. Never invent a label.
+- "contentTypeAlternatives" is exactly four other official IAB Names — the next-closest matches, ordered closest first. No duplicates, and none equal to contentType.
+- "geographicSignal" is where the business operates, at the most specific level the site actually supports:
+  - a city name when they serve one city or a clearly local area (e.g. "Helsinki")
+  - a country name when they serve a whole country or several cities in one country with no single home city (e.g. "Finland")
+  - "Global" when they serve many countries, sell worldwide, or have no geographic limit
+- Prefer city over country over Global when the evidence supports it.
+- Never invent a city that is not on the page. If you only know the country, use the country. If the site does not say, set geographicSignal to "".
+- "geographicKind" matches geographicSignal: "city", "country", or "global".
+- "geographicAlternatives" is exactly four other places the advertiser might pick instead — typically the parent country (if a city), "Global", nearby cities, or neighbouring countries. No duplicates, and none equal to geographicSignal. "Global" must be one of them unless geographicSignal is already "Global".
+- "national" is true only if they serve all of Finland or operate globally.
 - "ecommerce" is true only if you see a cart, a shop, or product pages with prices.
 - "audienceSignals" are short phrases the site uses about who it serves, e.g. ["families", "professionals"]. Empty array if none.
 - "confidence" is 0 to 1: how sure you are the above is right. Score low when the page is thin, generic, or mostly navigation.
@@ -629,10 +670,19 @@ ${s.text.slice(0, 6000)}
     const r = await askJson<Partial<BusinessSignals>>(
       SIGNALS_SYSTEM,
       user,
-      1200,
+      1400,
       "low"
     );
-    return normalizeSignals(r);
+    const pageText = [
+      s.title,
+      s.ogTitle,
+      s.metaDescription,
+      s.ogDescription,
+      s.text.slice(0, 4000),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return normalizeSignals(r, pageText);
   } catch {
     return null;
   }
@@ -646,7 +696,10 @@ const CATEGORIES = new Set([
   "other",
 ]);
 
-function normalizeSignals(r: Partial<BusinessSignals>): BusinessSignals | null {
+function normalizeSignals(
+  r: Partial<BusinessSignals>,
+  pageText = ""
+): BusinessSignals | null {
   const businessName = clean(r.businessName);
   if (!businessName) return null;
 
@@ -656,15 +709,43 @@ function normalizeSignals(r: Partial<BusinessSignals>): BusinessSignals | null {
 
   const confidence = Number(r.confidence);
 
+  const content = resolveContentTypePicks(
+    clean(r.contentType) || clean(r.industry),
+    Array.isArray(r.contentTypeAlternatives)
+      ? r.contentTypeAlternatives.map(clean)
+      : []
+  );
+
+  const rawSignal = clean(r.geographicSignal);
+  const rawKind = String(r.geographicKind ?? "").toLowerCase();
+  const primary =
+    rawKind === "global"
+      ? GLOBAL_LOCATION
+      : rawSignal;
+  const geoFromModel = resolveLocationPicks(
+    primary,
+    Array.isArray(r.geographicAlternatives)
+      ? r.geographicAlternatives.map(clean)
+      : []
+  );
+  const geo =
+    geoFromModel.location || !pageText
+      ? geoFromModel
+      : inferLocationFromText(pageText);
+
   return {
     businessName,
-    industry: clean(r.industry),
+    industry: content.contentType || clean(r.industry),
+    contentType: content.contentType,
+    contentTypeAlternatives: content.contentTypeAlternatives,
     category,
     summary: clean(r.summary),
     productsOrServices: clean(r.productsOrServices),
-    geographicSignal: clean(r.geographicSignal),
+    geographicSignal: geo.location,
+    geographicAlternatives: geo.locationAlternatives,
+    geographicKind: locationKind(geo.location),
     ecommerce: Boolean(r.ecommerce),
-    national: Boolean(r.national),
+    national: isNationalReach(geo.location),
     audienceSignals: Array.isArray(r.audienceSignals)
       ? r.audienceSignals.map(clean).filter(Boolean).slice(0, 6)
       : [],

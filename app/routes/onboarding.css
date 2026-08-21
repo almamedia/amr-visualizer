@@ -126,6 +126,11 @@
   gap: var(--space-2);
 }
 
+.ob-options.stacked {
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
 @media (min-width: 720px) {
   .ob-options.two {
     grid-template-columns: 1fr 1fr;
@@ -153,6 +158,17 @@
   cursor: pointer;
   transition: border-color var(--dur-fast) var(--ease-standard),
     background var(--dur-fast) var(--ease-standard);
+}
+
+.ob-options.stacked .ob-option {
+  gap: var(--space-1);
+  min-height: 72px;
+  padding: var(--space-4);
+  font-size: var(--text-body-sz);
+}
+
+.ob-options.stacked .ob-option small {
+  font-size: var(--text-small);
 }
 
 .ob-option:hover:not(:disabled) {
@@ -473,6 +489,16 @@
 .ob-field textarea {
   width: 100%;
   min-height: 48px;
+}
+
+.ob-field .content-type-trigger,
+.ob-field .multi-select-trigger {
+  min-height: 48px;
+}
+
+.ob-field .content-type-menu,
+.ob-field .multi-select-menu {
+  z-index: 12;
 }
 
 .ob-cta-row {
