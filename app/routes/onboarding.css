@@ -322,12 +322,15 @@
   margin-bottom: var(--space-4);
 }
 
+/* Read as a quotation of what we found on the site, not as our own claim —
+   hence the rule and the indent rather than a display-sized lead. */
 .ob-summary {
-  font-size: var(--text-lead);
-  line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-tight);
+  font-size: var(--text-body-sz);
+  line-height: var(--leading-normal);
   margin: 0;
-  color: var(--text-strong);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--violet);
+  color: var(--text-body);
 }
 
 .ob-channel {
