@@ -109,7 +109,14 @@ const ORDER: Step[] = [
 
 /** Steps the progress indicator counts. Skipping the URL drops the brand step. */
 function questionSteps(urlSkipped: boolean): Step[] {
-  const all: Step[] = ["url", "brand", "goal", "timeline", "audience", "budget"];
+  const all: Step[] = [
+    "url",
+    "brand",
+    "goal",
+    "timeline",
+    "audience",
+    "budget",
+  ];
   return urlSkipped ? all.filter((s) => s !== "brand") : all;
 }
 
@@ -231,7 +238,10 @@ export default function OnboardingPage() {
             return;
           }
           cohortEverReady.current = true;
-          cohortSeen.current = [...cohortSeen.current, ...next.map((m) => m.cohort.id)];
+          cohortSeen.current = [
+            ...cohortSeen.current,
+            ...next.map((m) => m.cohort.id),
+          ];
           setCohortMatches(next);
           setCohortStatus("ready");
         })
@@ -246,14 +256,18 @@ export default function OnboardingPage() {
       answers.audience.regionIds,
       answers.audience.cities,
       answers.audience.enrichment,
-    ]
+    ],
   );
 
   useEffect(() => {
     if (cohortStatus !== "loading") return;
     const t = setTimeout(() => {
       setCohortStatus((s) =>
-        s === "loading" ? (cohortEverReady.current ? "ready" : "unavailable") : s
+        s === "loading"
+          ? cohortEverReady.current
+            ? "ready"
+            : "unavailable"
+          : s,
       );
     }, COHORTS_TIMEOUT_MS);
     return () => clearTimeout(t);
@@ -261,7 +275,7 @@ export default function OnboardingPage() {
 
   const patch = useCallback(
     (part: Partial<FlowAnswers>) => setAnswers((a) => ({ ...a, ...part })),
-    []
+    [],
   );
 
   const go = useCallback((to: Step) => {
@@ -278,17 +292,57 @@ export default function OnboardingPage() {
       if (ORDER[i] === "brand" && skipsBrand) i += delta;
       go(ORDER[Math.min(Math.max(i, 0), ORDER.length - 1)]);
     },
-    [step, go, skipsBrand]
+    [step, go, skipsBrand],
   );
 
   const next = useCallback(() => move(1), [move]);
   const back = useCallback(() => move(-1), [move]);
 
   /**
+   * Seed the confirmable fields from the analysis, once per analysis run.
+   *
+   * This lives here rather than in BrandStep because BrandStep unmounts the
+   * moment the advertiser moves on. A guard held inside it resets on the way
+   * back, and the effect re-seeds over whatever they had corrected — wiping a
+   * hand-picked content type back to whatever the scrape produced, or to
+   * nothing at all when it produced none. The page never unmounts, so the
+   * guard held here means what they confirmed stays confirmed.
+   */
+  const seededAnalysis = useRef(false);
+  useEffect(() => {
+    const { signals, brand } = analysis;
+    if (seededAnalysis.current || (!signals && !brand)) return;
+    seededAnalysis.current = true;
+    const content = resolveContentTypePicks(
+      brand?.contentType || signals?.contentType || signals?.industry || "",
+      brand?.contentTypeAlternatives ?? signals?.contentTypeAlternatives ?? [],
+    );
+    const geo = resolveLocationPicks(
+      signals?.geographicSignal || "",
+      signals?.geographicAlternatives ?? [],
+    );
+    setBusiness({
+      businessName: signals?.businessName || brand?.companyName || "",
+      industry: content.contentType || signals?.industry || "",
+      contentType: content.contentType,
+      contentTypeAlternatives: content.contentTypeAlternatives,
+      productsOrServices:
+        signals?.productsOrServices || brand?.description || "",
+      location: geo.location,
+      locationAlternatives: geo.locationAlternatives,
+    });
+    setCategory(
+      signals?.category ?? categoryFromContentType(content.contentType),
+    );
+  }, [analysis]);
+
+  /**
    * Kicked off the moment the address is submitted. The brand step waits on
    * it, so the sooner it starts the shorter that wait is.
    */
   const startAnalysis = useCallback((url: string) => {
+    // A new address, or a retry, is new ground truth: let it seed again.
+    seededAnalysis.current = false;
     setAnalysis({ status: "running", signals: null, brand: null });
     fetch("/api/analyze", {
       method: "POST",
@@ -310,7 +364,7 @@ export default function OnboardingPage() {
     // A scrape that never lands must not strand the advertiser on one screen.
     setTimeout(() => {
       setAnalysis((a) =>
-        a.status === "running" ? { ...a, status: "failed" } : a
+        a.status === "running" ? { ...a, status: "failed" } : a,
       );
     }, ANALYSIS_TIMEOUT_MS);
   }, []);
@@ -359,8 +413,14 @@ export default function OnboardingPage() {
           onBrandColorChange={(key, hex) =>
             setAnalysis((a) =>
               a.brand
-                ? { ...a, brand: { ...a.brand, colors: { ...a.brand.colors, [key]: hex } } }
-                : a
+                ? {
+                    ...a,
+                    brand: {
+                      ...a.brand,
+                      colors: { ...a.brand.colors, [key]: hex },
+                    },
+                  }
+                : a,
             )
           }
           onNext={next}
@@ -426,6 +486,7 @@ export default function OnboardingPage() {
             setCohortMatches([]);
             cohortSeen.current = [];
             cohortEverReady.current = false;
+            seededAnalysis.current = false;
             go("url");
           }}
         />
@@ -614,6 +675,17 @@ function GoalStep({
   onBack: () => void;
 }) {
   const c = flow.goalStep;
+
+  // One choice is the whole step, so picking one is the answer and the
+  // Continue press at once. Deliberately driven by the click, not by an
+  // effect watching `value`: an effect would fire again the moment the
+  // advertiser stepped back here with a goal already chosen, and bounce
+  // them straight forward with no way to stay.
+  function pick(g: GoalId) {
+    onChange(g);
+    onNext();
+  }
+
   return (
     <div className="ob-card">
       <h2 className="ob-q">{c.question}</h2>
@@ -627,7 +699,7 @@ function GoalStep({
             suggested={suggestion === g.id}
             label={g.label}
             hint={g.hint}
-            onClick={() => onChange(g.id)}
+            onClick={() => pick(g.id)}
           />
         ))}
       </div>
@@ -682,7 +754,9 @@ function TimelineStep({
               id="ob-start"
               type="date"
               value={value.startDate}
-              onChange={(e) => onChange({ ...value, startDate: e.target.value })}
+              onChange={(e) =>
+                onChange({ ...value, startDate: e.target.value })
+              }
             />
           </div>
         )}
@@ -774,7 +848,7 @@ function AudienceStep({
   // a selection un-filters it again automatically. Refresh replacing
   // `matches` wholesale therefore can't disturb a selection either way.
   const visibleCandidates = matches.filter(
-    (m) => !value.cohorts.some((x) => x.cohort.id === m.cohort.id)
+    (m) => !value.cohorts.some((x) => x.cohort.id === m.cohort.id),
   );
 
   const selectCohort = (m: CohortMatch) => {
@@ -885,61 +959,67 @@ function AudienceStep({
         {cohortsOn &&
           (cohortStatus === "ready" ||
             (cohortStatus === "loading" && visibleCandidates.length > 0)) && (
-          <>
-            <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
-              Best fit for your business — pick as many as apply.
-            </p>
+            <>
+              <p className="ob-sub" style={{ marginBottom: "var(--space-2)" }}>
+                Best fit for your business — pick as many as apply.
+              </p>
 
-            {visibleCandidates.length > 0 && (
-              <div className="ob-options two">
-                {visibleCandidates.map((m) => (
-                  <OptionCard
-                    key={m.cohort.id}
-                    selected={false}
-                    label={m.cohort.path.split(">").pop() ?? m.cohort.path}
-                    hint={m.whyItFits}
-                    onClick={() => selectCohort(m)}
+              {visibleCandidates.length > 0 && (
+                <div className="ob-options two">
+                  {visibleCandidates.map((m) => (
+                    <OptionCard
+                      key={m.cohort.id}
+                      selected={false}
+                      label={m.cohort.path.split(">").pop() ?? m.cohort.path}
+                      hint={m.whyItFits}
+                      onClick={() => selectCohort(m)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ marginTop: "var(--space-3)" }}>
+                <button
+                  type="button"
+                  className="outline"
+                  disabled={cohortStatus === "loading"}
+                  onClick={() => fetchCohorts(remainingSlots())}
+                >
+                  {cohortStatus === "loading" ? (
+                    <>
+                      <span className="spinner" /> Finding more…
+                    </>
+                  ) : (
+                    "Refresh best-fit segments"
+                  )}
+                </button>
+
+                <div
+                  className="ob-field"
+                  style={{ marginTop: "var(--space-2)" }}
+                >
+                  <label htmlFor="ob-enrich">
+                    Tell us more about your customers
+                  </label>
+                  <textarea
+                    id="ob-enrich"
+                    rows={2}
+                    value={value.enrichment}
+                    placeholder="e.g. mostly first-time buyers, or people planning a renovation"
+                    onChange={(e) =>
+                      onChange({ ...value, enrichment: e.target.value })
+                    }
                   />
-                ))}
+                  <p
+                    className="ob-sub"
+                    style={{ margin: "var(--space-1) 0 0" }}
+                  >
+                    Used the next time you hit Refresh.
+                  </p>
+                </div>
               </div>
-            )}
-
-            <div style={{ marginTop: "var(--space-3)" }}>
-              <button
-                type="button"
-                className="outline"
-                disabled={cohortStatus === "loading"}
-                onClick={() => fetchCohorts(remainingSlots())}
-              >
-                {cohortStatus === "loading" ? (
-                  <>
-                    <span className="spinner" /> Finding more…
-                  </>
-                ) : (
-                  "Refresh best-fit segments"
-                )}
-              </button>
-
-              <div className="ob-field" style={{ marginTop: "var(--space-2)" }}>
-                <label htmlFor="ob-enrich">
-                  Tell us more about your customers
-                </label>
-                <textarea
-                  id="ob-enrich"
-                  rows={2}
-                  value={value.enrichment}
-                  placeholder="e.g. mostly first-time buyers, or people planning a renovation"
-                  onChange={(e) =>
-                    onChange({ ...value, enrichment: e.target.value })
-                  }
-                />
-                <p className="ob-sub" style={{ margin: "var(--space-1) 0 0" }}>
-                  Used the next time you hit Refresh.
-                </p>
-              </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
 
         {!cohortsOn && (
           <>
@@ -1045,7 +1125,8 @@ function BudgetStep({
             onChange={(e) =>
               onChange({
                 ...value,
-                customEur: e.target.value === "" ? null : Number(e.target.value),
+                customEur:
+                  e.target.value === "" ? null : Number(e.target.value),
               })
             }
           />
@@ -1102,38 +1183,6 @@ function BrandStep({
 }) {
   const { status, signals, brand } = analysis;
 
-  // Seed the form from the analysis the first time it lands. After that the
-  // advertiser owns these fields and a re-render must not overwrite them.
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (seeded.current || (!signals && !brand)) return;
-    seeded.current = true;
-    const content = resolveContentTypePicks(
-      brand?.contentType || signals?.contentType || signals?.industry || "",
-      brand?.contentTypeAlternatives ??
-        signals?.contentTypeAlternatives ??
-        []
-    );
-    const geo = resolveLocationPicks(
-      signals?.geographicSignal || "",
-      signals?.geographicAlternatives ?? []
-    );
-    onBusinessChange({
-      businessName: signals?.businessName || brand?.companyName || "",
-      industry: content.contentType || signals?.industry || "",
-      contentType: content.contentType,
-      contentTypeAlternatives: content.contentTypeAlternatives,
-      productsOrServices:
-        signals?.productsOrServices || brand?.description || "",
-      location: geo.location,
-      locationAlternatives: geo.locationAlternatives,
-    });
-    onCategoryChange(
-      signals?.category ?? categoryFromContentType(content.contentType)
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signals, brand]);
-
   if (status === "running") {
     return (
       <div className="ob-card">
@@ -1177,7 +1226,7 @@ function BrandStep({
 
   const set = <K extends keyof ConfirmedBusiness>(
     k: K,
-    v: ConfirmedBusiness[K]
+    v: ConfirmedBusiness[K],
   ) => onBusinessChange({ ...business, [k]: v });
 
   const palette = brand
@@ -1192,10 +1241,6 @@ function BrandStep({
   return (
     <div className="ob-card">
       <h2 className="ob-q">Here&rsquo;s what we found about your business</h2>
-      <p className="ob-sub">
-        Everything after this — where your ad runs, what it costs, what it says
-        — is built on this. Correct anything that&rsquo;s off.
-      </p>
 
       {signals?.summary && <p className="ob-summary">{signals.summary}</p>}
 
@@ -1263,7 +1308,10 @@ function BrandStep({
           <div className="ob-assets-row">
             {brand?.logoUrl && (
               <div className="ob-logo">
-                <img src={brand.logoUrl} alt={`${business.businessName} logo`} />
+                <img
+                  src={brand.logoUrl}
+                  alt={`${business.businessName} logo`}
+                />
               </div>
             )}
             <div className="ob-swatches">
@@ -1285,13 +1333,6 @@ function BrandStep({
               ))}
             </div>
           </div>
-          <p className="ob-sub" style={{ margin: "var(--space-3) 0 0" }}>
-            {photoCount > 0
-              ? `Plus ${photoCount} photo${photoCount === 1 ? "" : "s"} from your site. `
-              : ""}
-            Got a colour wrong? Click a swatch to fix it. The logo and photos
-            can be changed when you make the ad — that comes after the plan.
-          </p>
         </div>
       )}
 
@@ -1335,7 +1376,7 @@ function RecommendationStep({
 
   const recommendation = useMemo(
     () => recommend(answers, signals),
-    [answers, signals]
+    [answers, signals],
   );
 
   return (
@@ -1388,7 +1429,7 @@ function RecommendationPanels({
   }
 
   const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(
-    "Your advertising recommendation"
+    "Your advertising recommendation",
   )}&body=${encodeURIComponent(briefAsText(business, recommendation))}`;
 
   return (
@@ -1512,7 +1553,8 @@ function RecommendationPanels({
               Split{" "}
               {recommendation.channels
                 .map(
-                  (c) => `${Math.round(c.budgetShare * 100)}% ${c.channel.name}`
+                  (c) =>
+                    `${Math.round(c.budgetShare * 100)}% ${c.channel.name}`,
                 )
                 .join(" / ")}
               .
@@ -1559,7 +1601,11 @@ function RecommendationPanels({
         )}
 
         <div className="ob-email">
-          <label htmlFor="ob-email" className="ob-legend" style={{ flexBasis: "100%" }}>
+          <label
+            htmlFor="ob-email"
+            className="ob-legend"
+            style={{ flexBasis: "100%" }}
+          >
             {copy.emailCta}
           </label>
           <input
@@ -1578,8 +1624,8 @@ function RecommendationPanels({
         </div>
         <p className="ob-sub" style={{ marginTop: "var(--space-2)" }}>
           This opens your own mail app with the summary already written. Sending
-          from our side, and whether that needs a marketing opt-in, is still open
-          with Legal.
+          from our side, and whether that needs a marketing opt-in, is still
+          open with Legal.
         </p>
 
         {hasProvisionalData && (
