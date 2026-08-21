@@ -312,8 +312,10 @@ export interface CreativeBrief {
     pricingModel: PricingModel;
     /** Per click for cpc formats, per 1000 impressions for cpm. */
     priceEur: number;
-    /** Region id when the user narrowed to one, else "". */
-    regionId: string;
+    /** Official region ids when the user narrowed to regions, else empty. */
+    regionIds: string[];
+    /** City names when the user narrowed to cities, else empty. */
+    cities: string[];
     /** Onboarding channel ids, for targeting lookup. */
     channelIds: string[];
     /** Where the ad clicks through to — the site onboarding started from. */

@@ -52,9 +52,16 @@ const assets: GeneratedAsset[] = [
 const answers: FlowAnswers = {
   url: "https://example.fi",
   urlSkipped: false,
-  goal: "traffic",
+  goal: "conversion",
   timeline: { startMode: "date", startDate: "2026-09-01", duration: "1-month" },
-  audience: { geography: "region", regionId: "uusimaa", city: "", types: ["general-consumers"] },
+  audience: {
+    geography: "region",
+    regionIds: ["uusimaa"],
+    cities: [],
+    types: ["general-consumers"],
+    cohorts: [],
+    enrichment: "",
+  },
   budget: { tier: "medium", customEur: null },
 };
 

@@ -167,9 +167,13 @@ export function buildBookingRequest(params: {
     assets,
     targeting: {
       channelIds,
-      regionId:
+      regionIds:
         answers.audience.geography === "region"
-          ? answers.audience.regionId
+          ? answers.audience.regionIds
+          : undefined,
+      cities:
+        answers.audience.geography === "city"
+          ? answers.audience.cities
           : undefined,
       audienceTypes: answers.audience.types,
     },

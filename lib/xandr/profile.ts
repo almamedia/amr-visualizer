@@ -77,9 +77,10 @@ export function buildProfile(
     );
   }
 
-  if (targeting.regionId) {
+  if (targeting.regionIds?.length || targeting.cities?.length) {
+    const places = [...(targeting.regionIds ?? []), ...(targeting.cities ?? [])];
     warnings.push(
-      `Geographic targeting for "${targeting.regionId}" is not applied — Xandr region ids are not mapped yet.`
+      `Geographic targeting for ${places.join(", ")} is not applied — Xandr region ids are not mapped yet.`
     );
   }
   if (targeting.audienceTypes?.length) {

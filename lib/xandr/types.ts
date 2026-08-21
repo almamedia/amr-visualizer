@@ -211,7 +211,9 @@ export interface LineItemCreatedResponse {
 export interface BookingTargeting {
   /** Onboarding channel ids, e.g. ["iltalehti"]. */
   channelIds: string[];
-  regionId?: string;
+  /** Onboarding region ids, e.g. ["uusimaa"]. */
+  regionIds?: string[];
+  cities?: string[];
   audienceTypes?: string[];
 }
 

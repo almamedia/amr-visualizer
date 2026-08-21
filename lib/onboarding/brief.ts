@@ -87,17 +87,16 @@ export function buildCreativeBrief(
       lifetimeBudgetEur: Math.round(monthlyBudgetEur * months * 100) / 100,
       pricingModel: primaryFormat?.pricingModel ?? "cpm",
       priceEur: primaryFormat?.priceEur ?? 0,
-      regionId:
-        answers.audience.geography === "region"
-          ? answers.audience.regionId
-          : "",
+      regionIds:
+        answers.audience.geography === "region" ? answers.audience.regionIds : [],
+      cities:
+        answers.audience.geography === "city" ? answers.audience.cities : [],
       channelIds: recommendation.channels.map((c) => c.channel.id),
       // The address the user typed on the URL step — the same one the brand
       // analysis ran against. Empty when they skipped that step, in which case
       // the site the brand was eventually read from is the next best thing.
       clickUrl: answers.url || brand?.sourceUrl || "",
     },
-    brand,
     audienceNotes: answers.audience.enrichment.trim() || undefined,
     brand: brand
       ? {

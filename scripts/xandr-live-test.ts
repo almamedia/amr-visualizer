@@ -28,7 +28,8 @@ const brand: BrandCard = {
   companyName: "Alma Test & Development",
   description: "A test advertiser used to rehearse the booking path.",
   tone: "Plain and direct",
-  industry: "Media",
+  contentType: "Media and Entertainment",
+  contentTypeAlternatives: [],
   logoUrl: null,
   colors: {
     primary: "#0b3d91",

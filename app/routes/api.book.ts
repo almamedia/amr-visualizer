@@ -96,7 +96,8 @@ export async function action({ request }: Route.ActionArgs) {
     assets,
     targeting: {
       channelIds: booking.channelIds,
-      regionId: booking.regionId || undefined,
+      regionIds: booking.regionIds?.length ? booking.regionIds : undefined,
+      cities: booking.cities?.length ? booking.cities : undefined,
       audienceTypes: brief.audienceTypes,
     },
     tag: bookingTag(brief),
