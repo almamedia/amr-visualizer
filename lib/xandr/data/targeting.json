@@ -1,0 +1,19 @@
+{
+  "note": "Maps onboarding channel ids (lib/onboarding/data/channels.json) to Xandr publisher ids. Publisher ids are per member, so they are keyed by member id: 13720 is Alma's test member, 6931 is live. A null means that channel cannot be targeted on that member and the booking says so rather than silently serving everywhere. Placement ids are deliberately not used — targeting the publisher holds the line item to that title's inventory without enumerating every ad slot.",
+  "provisional": true,
+  "owner": "AMS Ad Ops",
+  "channels": [
+    {
+      "id": "iltalehti",
+      "publishers": { "13720": 2064857, "6931": null }
+    },
+    {
+      "id": "kauppalehti",
+      "publishers": { "13720": null, "6931": null }
+    },
+    {
+      "id": "etuovi",
+      "publishers": { "13720": null, "6931": null }
+    }
+  ]
+}

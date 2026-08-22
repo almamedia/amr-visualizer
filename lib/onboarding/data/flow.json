@@ -1,0 +1,194 @@
+{
+  "note": "Question copy, options and coaching tips for the onboarding flow. Coaching tips follow PRD Appendix A: directional statements, never statistical claims, never urgency.",
+  "owner": "AMS Product / content design",
+  "welcome": {
+    "headline": "Find the right way to advertise your business",
+    "sub": "Answer a few questions and we'll recommend the best channels, formats, and budget for your goals. Takes about 3 minutes.",
+    "cta": "Get started",
+    "noAccount": "No account needed",
+    "credibility": "Your ad can run across Alma's titles — Iltalehti, Kauppalehti and Etuovi."
+  },
+  "urlStep": {
+    "question": "What's your website address?",
+    "placeholder": "https://yourbusiness.fi",
+    "helper": "We'll take a quick look at your website to better understand your business. This helps us give you a more relevant recommendation.",
+    "cta": "Continue",
+    "skip": "Skip — I'll answer manually",
+    "tip": "The more context we have about your business, the sharper the recommendation. Sharing your website is the fastest way to get there."
+  },
+  "goalStep": {
+    "question": "What do you want to achieve?",
+    "tip": "The clearest goal gets the sharpest result. Advertisers who focus on one objective at a time consistently outperform those trying to do everything at once.",
+    "options": [
+      {
+        "id": "awareness",
+        "label": "Increase awareness",
+        "hint": "Build recognition so people think of you first"
+      },
+      {
+        "id": "conversion",
+        "label": "Drive conversion",
+        "hint": "Turn interest into visits, enquiries, and sales"
+      },
+      {
+        "id": "local",
+        "label": "Grow my local business",
+        "hint": "Reach people in your area who are looking for what you offer"
+      }
+    ]
+  },
+  "timelineStep": {
+    "question": "When do you want to run your advertising?",
+    "startQuestion": "When should it start?",
+    "durationQuestion": "How long should it run?",
+    "tip": "Consistency beats intensity. A steady presence over several weeks builds brand recognition far more effectively than a single short burst.",
+    "startOptions": [
+      {
+        "id": "asap",
+        "label": "As soon as possible",
+        "hint": "We'll get you moving right away"
+      },
+      {
+        "id": "date",
+        "label": "I have a specific start date",
+        "hint": "Pick the day it should begin"
+      }
+    ],
+    "durationOptions": [
+      {
+        "id": "2-weeks",
+        "label": "2 weeks",
+        "hint": "Good for events, launches, or quick tests",
+        "months": 0.5
+      },
+      {
+        "id": "1-month",
+        "label": "1 month",
+        "hint": "A solid run to build visibility",
+        "months": 1
+      },
+      {
+        "id": "3-months",
+        "label": "3 months",
+        "hint": "Sustained reach — typically better results",
+        "months": 3
+      },
+      {
+        "id": "undecided",
+        "label": "I'll decide later",
+        "hint": "We'll recommend based on your goal",
+        "months": null
+      }
+    ]
+  },
+  "audienceStep": {
+    "question": "Who are you trying to reach?",
+    "geographyQuestion": "Where are your customers?",
+    "typeQuestion": "What kind of people are they?",
+    "typeHelper": "Pick up to 2",
+    "tip": "Tighter focus, better results. For local businesses, reaching the right people in the right area is worth far more than reaching everyone.",
+    "geographyOptions": [
+      {
+        "id": "finland",
+        "label": "Finland-wide",
+        "hint": "Anyone in the country could be a customer"
+      },
+      {
+        "id": "region",
+        "label": "Specific regions",
+        "hint": "Choose one or more areas you serve"
+      },
+      {
+        "id": "city",
+        "label": "Specific cities",
+        "hint": "Best for storefronts or a few locations"
+      }
+    ],
+    "typeOptions": [
+      {
+        "id": "general-consumers",
+        "label": "General consumers",
+        "hint": "Broad reach across all demographics",
+        "channelIds": [
+          "iltalehti"
+        ]
+      },
+      {
+        "id": "business-decision-makers",
+        "label": "Business decision-makers",
+        "hint": "Managers, founders, and professionals",
+        "channelIds": [
+          "kauppalehti",
+          "iltalehti"
+        ]
+      },
+      {
+        "id": "homeowners-families",
+        "label": "Homeowners and families",
+        "hint": "Settled, purchase-ready audiences",
+        "channelIds": [
+          "iltalehti",
+          "etuovi"
+        ]
+      },
+      {
+        "id": "young-adults",
+        "label": "Young adults (18–34)",
+        "hint": "Digitally active, trend-aware",
+        "channelIds": [
+          "iltalehti"
+        ]
+      },
+      {
+        "id": "high-income",
+        "label": "High-income earners",
+        "hint": "Financially active, premium buyers",
+        "channelIds": [
+          "kauppalehti"
+        ]
+      }
+    ]
+  },
+  "budgetStep": {
+    "question": "What's your advertising budget?",
+    "tip": "A moderate budget run over time consistently outperforms the same budget spent in a short burst. Frequency builds recognition — and recognition builds trust.",
+    "reassurance": "You won't be charged here. This is just to build your recommendation.",
+    "allTiersNote": "We'll show you what this budget can realistically achieve before you commit to anything.",
+    "tiers": [
+      {
+        "id": "small",
+        "name": "Getting started",
+        "label": "Small",
+        "hint": "Good for focused local reach and testing what works",
+        "minEur": 300,
+        "maxEur": 800,
+        "provisional": true
+      },
+      {
+        "id": "medium",
+        "name": "Building presence",
+        "label": "Medium",
+        "hint": "Recommended for consistent visibility across one or two channels",
+        "minEur": 800,
+        "maxEur": 3000,
+        "provisional": true
+      },
+      {
+        "id": "custom",
+        "name": "I have a specific budget",
+        "label": "Custom",
+        "hint": "Tell us your number and we'll build the best plan around it",
+        "minEur": null,
+        "maxEur": null,
+        "provisional": false
+      }
+    ]
+  },
+  "recommendationStep": {
+    "tip": "A visible logo and one clear call-to-action are the two things that make display ads work. This is also a requirement for Performance Display — so you're already on the right track.",
+    "reachDisclaimer": "Actual results will vary based on final targeting and creative.",
+    "primaryCta": "Create your ad",
+    "secondaryCta": "Talk to an AMS specialist",
+    "emailCta": "Send this to my email"
+  }
+}

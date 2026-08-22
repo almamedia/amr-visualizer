@@ -2,11 +2,30 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ScrapeResult } from "./scrape";
 import type { BrandCard, CopyVariant, GoalId, TextLimits } from "./types";
 import { getGoal } from "./specs";
+import type {
+  AudienceTypeId,
+  BusinessSignals,
+  Cohort,
+  CohortMatch,
+  GoalId as OnboardingGoalId,
+} from "./onboarding/types";
+import { prepareCohortCandidates } from "./onboarding/cohorts";
+import {
+  inferContentTypeFromText,
+  resolveContentTypePicks,
+} from "./content-taxonomy";
+import {
+  GLOBAL_LOCATION,
+  inferLocationFromText,
+  isNationalReach,
+  locationKind,
+  resolveLocationPicks,
+} from "./geography";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
-/** Kuinka monta kuvaehdokasta näytetään mallille. Jokainen kuva maksaa
- *  tokeneita, joten katselmoidaan kärki eikä koko sivun kuvastoa. */
+/** How many image candidates the model is shown. Every image costs tokens,
+ *  so it reviews the top of the list rather than the whole page. */
 const MAX_VISION_IMAGES = 6;
 
 export function hasApiKey(): boolean {
@@ -22,8 +41,8 @@ function model(): string {
 }
 
 /**
- * Kutsu Claudea ja palauta jäsennelty JSON. Jos malli ei tue effort-parametria,
- * yritetään uudelleen ilman sitä, jotta mallin voi vaihtaa vapaasti.
+ * Call Claude and return parsed JSON. If the model does not support the effort
+ * parameter, retry without it so the model stays freely swappable.
  */
 type UserContent = string | Anthropic.ContentBlockParam[];
 
@@ -50,7 +69,7 @@ async function askJson<T>(
     text = firstText(res);
   } catch (e) {
     if (!isBadRequest(e)) throw e;
-    // Malli ei tue effortia — aja ilman.
+    // The model does not support effort — run without it.
     const res = await c.messages.create(base);
     text = firstText(res);
   }
@@ -71,10 +90,10 @@ function firstText(res: Anthropic.Message): string {
   for (const block of res.content) {
     if (block.type === "text") return block.text;
   }
-  throw new Error("Claude ei palauttanut tekstisisältöä.");
+  throw new Error("Claude returned no text content.");
 }
 
-/** Kestävä JSON-jäsennys: sietää koodiaidat ja selittävän tekstin ympärillä. */
+/** Tolerant JSON parsing: survives code fences and prose around the object. */
 function parseJson<T>(raw: string): T {
   let s = raw.trim();
 
@@ -84,11 +103,11 @@ function parseJson<T>(raw: string): T {
   try {
     return JSON.parse(s) as T;
   } catch {
-    // Etsi ensimmäinen tasapainoinen objekti tai taulukko.
+    // Find the first balanced object or array.
   }
 
   const start = s.search(/[[{]/);
-  if (start === -1) throw new Error("Claude ei palauttanut JSONia.");
+  if (start === -1) throw new Error("Claude returned no JSON.");
   const open = s[start];
   const close = open === "{" ? "}" : "]";
   let depth = 0;
@@ -112,50 +131,54 @@ function parseJson<T>(raw: string): T {
       }
     }
   }
-  throw new Error("Claude palautti vaillinaisen JSONin.");
+  throw new Error("Claude returned incomplete JSON.");
 }
 
-// ---------------------------------------------------------------- brändi
+// ----------------------------------------------------------------- brand
 
-const BRAND_SYSTEM = `Olet brändianalyytikko, joka tiivistää suomalaisen pk-yrityksen verkkosivun mainoskäyttöön sopivaksi brändikortiksi.
+const BRAND_SYSTEM = `You are a brand analyst. You read a small business's website and condense it into a brand card an ad can be built from.
 
-Vastaa VAIN JSONilla, ilman selityksiä tai koodiaitoja. Käytä täsmälleen tätä rakennetta:
+Reply with JSON ONLY, no explanation and no code fences. Use exactly this shape:
 {
   "companyName": string,
   "description": string,
   "tone": string,
-  "toimiala": string,
+  "contentType": string,
+  "contentTypeAlternatives": [string, string, string, string],
   "logoUrl": string | null,
   "colors": { "primary": "#rrggbb", "secondary": "#rrggbb", "accent": "#rrggbb", "background": "#rrggbb", "text": "#rrggbb" },
   "fonts": { "heading": string, "body": string },
   "imageUrls": string[]
 }
 
-Ohjeet:
-- companyName: yrityksen nimi sellaisena kuin se esiintyy sivulla. Ei slogania, ei domainia.
-- description: 1–2 lausetta suomeksi siitä, mitä yritys tekee ja kenelle. Konkreettinen, ei markkinointikliseitä.
-- tone: äänensävy 2–4 sanalla, esim. "Lämmin ja asiantunteva".
-- toimiala: yksi tai kaksi sanaa, esim. "Parturi-kampaamo".
-- logoUrl: valitse ehdokkaista todennäköisin logo, tai null jos yksikään ei vakuuta. Suosi kuvaa, jonka polussa tai altissa lukee logo, ennen faviconia. Mainos rakentuu vaalealle pohjalle, joten vältä negaversioita: jos tiedostonimessä on white, valko, nega, invert tai light, valitse jokin muu ehdokas silloin kun sellainen on tarjolla.
-- colors: valitse väriehdokkaista aidot brändivärit. primary on tunnistettavin brändiväri. background on vaalea tai tumma pohja, jolle mainos rakentuu. text erottuu backgroundista selvästi (kontrasti vähintään 4.5:1). accent käytetään CTA-napissa, ja sen on erotuttava backgroundista. Jos ehdokkaista ei löydy järkevää väriä, valitse toimialaan sopiva neutraali väri.
-- fonts: valitse fonttiehdokkaista. Jos ei löydy, ehdota toimialaan sopivat.
-- imageUrls: valitse 2–4 mainoskäyttöön sopivaa kuvaa. Kuvat on liitetty mukaan, joten katso ne. Palauta URLit täsmälleen sellaisina kuin ne annettiin, ja käytä numerointia kuvien tunnistamiseen.
+Instructions:
+- Write every string in English, even when the site is in another language.
+- companyName: the company's name as it appears on the page. Not the slogan, not the domain.
+- description: one or two sentences on what the company does and who for. Concrete, no marketing cliché.
+- tone: tone of voice in two to four words, e.g. "Warm and expert".
+- contentType: the single best IAB Content Taxonomy 3.1 Name for this website (copy an official Name, e.g. "Bars & Restaurants"). Prefer the most specific matching category. Never invent a label.
+- contentTypeAlternatives: exactly four other official IAB Names — the next-closest matches, ordered closest first. No duplicates, and none equal to contentType.
+- logoUrl: pick the likeliest logo from the candidates, or null if none convinces. Prefer an image whose path or alt text says logo over a favicon. The ad is built on a light ground, so avoid reversed-out versions: if the filename contains white, nega, invert or light, choose another candidate when one is available.
+- colors: pick the real brand colours from the candidates. primary is the most recognisable brand colour. background is the light or dark ground the ad is built on. text stands clearly apart from background (contrast at least 4.5:1). accent is used on the CTA button and must stand apart from background. If no sensible colour is among the candidates, choose a neutral that suits the content type.
+- fonts: pick from the font candidates. If none fit, suggest fonts that suit the content type.
+- imageUrls: pick two to four images suitable for advertising. The images are attached, so look at them. Return the URLs exactly as given, and use the numbering to identify them.
 
-  Hylkää ehdottomasti kuva, jossa on:
-  - tekstiä, otsikoita, iskulauseita tai verkko-osoitteita kuvan päällä
-  - CTA-painike tai muu toimintakehotus
-  - logo hallitsevana elementtinä
-  Tällainen kuva on jo valmis mainos. Sitä ei voi käyttää uuden mainoksen kuvana: siinä on oma otsikkonsa ja oma toimintakehotuksensa, jotka kilpailevat uuden mainoksen kanssa, ja rajaus katkaisee tekstin kesken.
+  Always reject an image that has:
+  - text, headlines, slogans or web addresses over it
+  - a CTA button or any other call to action
+  - a logo as the dominant element
+  An image like that is already an ad. It cannot be the image inside a new ad: it carries its own headline and its own call to action, both competing with the new ad, and cropping cuts its text mid-word.
 
-  Hylkää myös kollaasit, ruutukaappaukset, kaaviot, taulukot ja tyhjät kuvituskuviot.
+  Also reject collages, screenshots, charts, tables and empty decorative patterns.
 
-  Valitse valokuvia: ihmisiä, tuotteita, tiloja tai työn tekemistä. Jos yksikään kuva ei kelpaa, palauta tyhjä lista — mainos rakentuu silloin typografialla ja väreillä, mikä on parempi kuin huono kuva.`;
+  Choose photographs: people, products, spaces, or work being done. If no image is usable, return an empty list — an ad built from type and colour beats an ad built on the wrong photo.`;
 
 interface BrandResponse {
   companyName: string;
   description: string;
   tone: string;
-  toimiala: string;
+  contentType: string;
+  contentTypeAlternatives: string[];
   logoUrl: string | null;
   colors: BrandCard["colors"];
   fonts: BrandCard["fonts"];
@@ -165,7 +188,7 @@ interface BrandResponse {
 export async function analyzeBrand(s: ScrapeResult): Promise<BrandCard> {
   if (!hasApiKey()) return mockBrand(s);
 
-  const user = `Verkkosivu: ${s.finalUrl}
+  const user = `Website: ${s.finalUrl}
 
 <title>${s.title}</title>
 <og:site_name>${s.ogSiteName}</og:site_name>
@@ -173,39 +196,39 @@ export async function analyzeBrand(s: ScrapeResult): Promise<BrandCard> {
 <meta-description>${s.metaDescription}</meta-description>
 <og:description>${s.ogDescription}</og:description>
 
-<logo-ehdokkaat>
-${s.logoCandidates.map((u, i) => `${i + 1}. ${u}`).join("\n") || "(ei löytynyt)"}
-</logo-ehdokkaat>
+<logo-candidates>
+${s.logoCandidates.map((u, i) => `${i + 1}. ${u}`).join("\n") || "(none found)"}
+</logo-candidates>
 
-<kuva-ehdokkaat>
+<image-candidates>
 ${
   s.imageCandidates
     .map((im, i) => `${i + 1}. ${im.url}${im.alt ? ` — alt: ${im.alt}` : ""}`)
-    .join("\n") || "(ei löytynyt)"
+    .join("\n") || "(none found)"
 }
-</kuva-ehdokkaat>
+</image-candidates>
 
-<vari-ehdokkaat esiintymismaaran-mukaan>
+<colour-candidates by-frequency>
 ${
   s.colorCandidates.map((c) => `${c.color} (${c.count})`).join(", ") ||
-  "(ei löytynyt)"
+  "(none found)"
 }
-</vari-ehdokkaat>
+</colour-candidates>
 
-<fontti-ehdokkaat>
-${s.fontCandidates.join(", ") || "(ei löytynyt)"}
-</fontti-ehdokkaat>
+<font-candidates>
+${s.fontCandidates.join(", ") || "(none found)"}
+</font-candidates>
 
-<sivun-teksti>
+<page-text>
 ${s.text.slice(0, 5000)}
-</sivun-teksti>`;
+</page-text>`;
 
-  // Liitä kuvaehdokkaat mukaan kuvina, jotta malli näkee ne. Pelkän
-  // URLin ja alt-tekstin perusteella valmis mainos menee helposti läpi.
+  // Attach the image candidates as images so the model can see them. Judged
+  // on URL and alt text alone, a finished ad slips through easily.
   const visionContent: Anthropic.ContentBlockParam[] = [];
   const shown = s.imageCandidates.slice(0, MAX_VISION_IMAGES);
   for (const [i, img] of shown.entries()) {
-    visionContent.push({ type: "text", text: `Kuva ${i + 1}: ${img.url}` });
+    visionContent.push({ type: "text", text: `Image ${i + 1}: ${img.url}` });
     visionContent.push({
       type: "image",
       source: { type: "url", url: img.url },
@@ -223,8 +246,8 @@ ${s.text.slice(0, 5000)}
         "low"
       );
     } catch (visionError) {
-      // Kuvat voivat olla mallin ulottumattomissa (kirjautumisen takana,
-      // liian isoja, tuntematon muoto). Aja tekstipohjainen analyysi.
+      // The images may be out of the model's reach: behind a login, too
+      // large, an unknown format. Fall back to the text-only analysis.
       if (!shown.length) throw visionError;
       r = await askJson<BrandResponse>(BRAND_SYSTEM, user, 2000, "low");
     }
@@ -235,21 +258,29 @@ ${s.text.slice(0, 5000)}
       .slice(0, 4)
       .map((url) => ({ url, alt: known.get(url) ?? "", enabled: true }));
 
+    const content = resolveContentTypePicks(
+      clean(r.contentType),
+      Array.isArray(r.contentTypeAlternatives)
+        ? r.contentTypeAlternatives.map(clean)
+        : []
+    );
+
     return {
       sourceUrl: s.finalUrl,
       companyName: clean(r.companyName) || fallbackName(s),
       description: clean(r.description) || s.metaDescription || "",
-      tone: clean(r.tone) || "Selkeä ja asiallinen",
-      toimiala: clean(r.toimiala) || "",
+      tone: clean(r.tone) || "Clear and straightforward",
+      contentType: content.contentType,
+      contentTypeAlternatives: content.contentTypeAlternatives,
       logoUrl: r.logoUrl && r.logoUrl.startsWith("http") ? r.logoUrl : null,
       colors: sanitizeColors(r.colors, s),
       fonts: {
         heading: clean(r.fonts?.heading) || "Helvetica Neue",
         body: clean(r.fonts?.body) || "Helvetica Neue",
       },
-      // Tyhjä lista on mallin tietoinen valinta, kun yksikään kuva ei kelpaa
-      // (valmiita mainoksia, ruutukaappauksia). Sitä ei ohiteta raakalistalla
-      // — typografialla rakennettu mainos on parempi kuin väärä kuva.
+      // An empty list is the model's deliberate choice when no image is
+      // usable (finished ads, screenshots). It is not overridden with the raw
+      // list — an ad built from type beats an ad built on the wrong photo.
       images,
       warnings: s.warnings,
     };
@@ -257,9 +288,9 @@ ${s.text.slice(0, 5000)}
     const brand = mockBrand(s);
     brand.warnings = [
       ...(brand.warnings ?? []),
-      `Claude-analyysi epäonnistui (${
-        e instanceof Error ? e.message : "tuntematon virhe"
-      }). Käytössä on sivulta poimittu arvio.`,
+      `Claude analysis failed (${
+        e instanceof Error ? e.message : "unknown error"
+      }). Using the estimate read straight off the page.`,
     ];
     return brand;
   }
@@ -274,14 +305,14 @@ function fallbackName(s: ScrapeResult): string {
   const t = s.ogTitle || s.title;
   if (t) return t.split(/[|–—-]/)[0].trim().slice(0, 60);
   try {
-    // Verkkotunnuksesta nimeksi: www ja päätteet pois, alkukirjain isoksi.
+    // Domain to name: strip www and the TLD, capitalise the first letter.
     const host = new URL(s.finalUrl).hostname
       .replace(/^www\./, "")
       .replace(/\.(fi|com|net|org|eu|se|io|co\.uk)$/i, "")
       .split(".")[0];
-    return host ? host.charAt(0).toUpperCase() + host.slice(1) : "Yritys";
+    return host ? host.charAt(0).toUpperCase() + host.slice(1) : "The company";
   } catch {
-    return "Yritys";
+    return "The company";
   }
 }
 
@@ -304,7 +335,7 @@ function sanitizeColors(
   };
 }
 
-// ------------------------------------------------- heuristinen varapaletti
+// ----------------------------------------------- heuristic fallback palette
 
 function rgb(hex: string): [number, number, number] {
   const s = hex.replace("#", "");
@@ -330,11 +361,11 @@ function sat(hex: string): number {
   return max === 0 ? 0 : (max - min) / max;
 }
 
-/** Arvaa paletti pelkistä väriehdokkaista, kun Claudea ei ole käytettävissä. */
+/** Guess a palette from the colour candidates alone, when Claude is absent. */
 function guessPalette(s: ScrapeResult): BrandCard["colors"] {
   const cands = s.colorCandidates.map((c) => c.color).filter((c) => HEX.test(c));
 
-  // Brändiväri: kylläisin, ei liian vaalea eikä liian tumma, painotettuna yleisyydellä.
+  // Brand colour: the most saturated, neither too light nor too dark, weighted by frequency.
   const scored = cands
     .map((c, i) => ({
       c,
@@ -363,9 +394,14 @@ function guessPalette(s: ScrapeResult): BrandCard["colors"] {
 }
 
 function mockBrand(s: ScrapeResult): BrandCard {
-  // Puuttuvasta API-avaimesta ei varoiteta täällä — käyttöliittymä näyttää
-  // siitä oman pysyvän huomautuksensa, eikä sitä kannata kertoa kahdesti.
+  // A missing API key is not warned about here — the UI shows its own
+  // standing notice, and saying it twice helps nobody.
   const warnings = [...s.warnings];
+  const content = inferContentTypeFromText(
+    [s.title, s.ogTitle, s.metaDescription, s.ogDescription, s.text.slice(0, 4000)]
+      .filter(Boolean)
+      .join("\n")
+  );
   return {
     sourceUrl: s.finalUrl,
     companyName: fallbackName(s),
@@ -373,9 +409,10 @@ function mockBrand(s: ScrapeResult): BrandCard {
       s.metaDescription ||
       s.ogDescription ||
       s.text.slice(0, 180).trim() ||
-      "Kuvaus puuttuu — täydennä käsin.",
-    tone: "Selkeä ja asiallinen",
-    toimiala: "",
+      "Description missing — fill this in by hand.",
+    tone: "Clear and straightforward",
+    contentType: content.contentType,
+    contentTypeAlternatives: content.contentTypeAlternatives,
     logoUrl: s.logoCandidates[0] ?? null,
     colors: guessPalette(s),
     fonts: {
@@ -390,20 +427,30 @@ function mockBrand(s: ScrapeResult): BrandCard {
 
 // ------------------------------------------------------------------ copy
 
-const COPY_SYSTEM = `Olet suomalainen mainostoimittaja. Kirjoitat display-mainosten tekstit pk-yrityksille.
+/**
+ * The language the ads themselves are written in.
+ *
+ * This is a product decision, not a translation detail. The tool is English,
+ * but the ads it makes run in Alma's titles, which are read in Finnish. Change
+ * this one constant to put the creative back into Finnish; the prompt, the mock
+ * copy fallback and the character-set check all follow it.
+ */
+export const COPY_LANGUAGE = "English";
 
-Vastaa VAIN JSONilla, ilman selityksiä tai koodiaitoja:
+const COPY_SYSTEM = `You are an advertising copywriter. You write the text inside display ads for small and medium-sized businesses.
+
+Reply with JSON ONLY, no explanation and no code fences:
 { "variants": [ { "headline": string, "body": string, "cta": string }, ... ] }
 
-Kirjoita täsmälleen 3 variaatiota, jotka eroavat toisistaan kulmaltaan — älä kirjoita samaa asiaa kolmella tavalla.
+Write exactly 3 variants that differ in angle — do not write the same thing three ways.
 
-Ohjeet:
-- Kirjoita moitteetonta suomea. Yhdyssanat oikein, ei anglismeja, ei turhia isoja alkukirjaimia.
-- Otsikko myy hyödyn, ei ominaisuutta. Ei huutomerkkejä, ei kaikkia versaaleja.
-- Leipäteksti tukee otsikkoa yhdellä konkreettisella asialla.
-- CTA on lyhyt toimintakehotus, esim. "Varaa aika" tai "Katso valikoima". Ei pistettä lopussa.
-- Älä keksi hintoja, lukuja, takuita tai väitteitä, joita lähdemateriaalissa ei ole.
-- Pysy merkkirajoissa. Ne ovat ehdottomia.`;
+Instructions:
+- Write in ${COPY_LANGUAGE}. Clean, idiomatic, correctly spelled.
+- The headline sells the benefit, not the feature. No exclamation marks, no all caps.
+- The body supports the headline with one concrete thing.
+- The CTA is a short call to action, e.g. "Book a time" or "See the range". No full stop.
+- Never invent prices, figures, guarantees or claims that are not in the source material.
+- Stay inside the character limits. They are absolute.`;
 
 interface CopyResponse {
   variants: { headline: string; body: string; cta: string }[];
@@ -417,20 +464,20 @@ export async function generateCopy(
   if (!hasApiKey()) return mockCopy(brand, goalId, limits);
 
   const goal = getGoal(goalId);
-  const user = `Yritys: ${brand.companyName}
-Toimiala: ${brand.toimiala || "ei tiedossa"}
-Mitä yritys tekee: ${brand.description}
-Äänensävy: ${brand.tone}
+  const user = `Company: ${brand.companyName}
+Content type: ${brand.contentType || "not known"}
+What the company does: ${brand.description}
+Tone of voice: ${brand.tone}
 
-Kampanjatavoite: ${goal.name} — ${goal.description}
-CTA-tyyli: ${goal.ctaHint}
+Campaign goal: ${goal.name} — ${goal.description}
+CTA style: ${goal.ctaHint}
 
-Merkkirajat (ehdottomat):
-- headline: enintään ${limits.headline} merkkiä
-- body: enintään ${limits.body} merkkiä
-- cta: enintään ${limits.cta} merkkiä
+Character limits (absolute):
+- headline: at most ${limits.headline} characters
+- body: at most ${limits.body} characters
+- cta: at most ${limits.cta} characters
 
-Kirjoita 3 variaatiota.`;
+Write 3 variants.`;
 
   const askVariants = async (): Promise<CopyVariant[]> => {
     const r = await askJson<CopyResponse>(COPY_SYSTEM, user, 1500, "medium");
@@ -440,16 +487,16 @@ Kirjoita 3 variaatiota.`;
         id: `v${i + 1}`,
         headline: clean(v.headline),
         body: clean(v.body),
-        cta: clean(v.cta) || "Lue lisää",
+        cta: clean(v.cta) || "Read more",
       }));
   };
 
   try {
     let usable = (await askVariants()).filter(isLatinOnly);
 
-    // Malli sekoittaa satunnaisesti kyrillisiä homoglyyfejä latinalaisten
-    // sekaan ("lempipiццasi"). Ne näyttävät oikealta vilkaisulla mutta ovat
-    // rikkinäistä suomea valmiissa mainoksessa, joten pyydetään uudet.
+    // The model occasionally mixes Cyrillic homoglyphs in among the Latin
+    // ones ("your favourite piцца"). They look right at a glance but are
+    // broken text in a finished ad, so ask again.
     if (usable.length < 3) {
       const retry = (await askVariants()).filter(isLatinOnly);
       usable = [...usable, ...retry];
@@ -464,8 +511,8 @@ Kirjoita 3 variaatiota.`;
   }
 }
 
-/** Kyrilliset ja kreikkalaiset merkit suomenkielisessä mainostekstissä ovat
- *  aina mallin lipsahdus, eivät tarkoituksellisia. */
+/** Cyrillic and Greek characters in Latin-script ad copy are always a slip by
+ *  the model, never deliberate. */
 const NON_LATIN = /[Ѐ-ӿͰ-Ͽ]/;
 
 export function isLatinOnly(v: CopyVariant): boolean {
@@ -478,67 +525,67 @@ function mockCopy(
   limits: TextLimits
 ): CopyVariant[] {
   const name = brand.companyName;
-  const ala = brand.toimiala || "palvelumme";
+  const trade = brand.contentType || "what we do";
 
   const byGoal: Record<GoalId, CopyVariant[]> = {
-    tunnettuus: [
+    awareness: [
       {
         id: "v1",
-        headline: `${name} — lähelläsi`,
-        body: `Tutustu siihen, mitä teemme ja miksi asiakkaamme palaavat.`,
-        cta: "Tutustu meihin",
+        headline: `${name} — close to you`,
+        body: `See what we do, and why our customers keep coming back.`,
+        cta: "Get to know us",
       },
       {
         id: "v2",
-        headline: `Tunnetko jo ${name}?`,
-        body: `${ala} ammattitaidolla ja ilman kiirettä.`,
-        cta: "Katso lisää",
+        headline: `Do you know ${name} yet?`,
+        body: `${trade}, done properly and without the rush.`,
+        cta: "See more",
       },
       {
         id: "v3",
-        headline: `Tässä olemme`,
-        body: `${name} palvelee arkena ja viikonloppuisin.`,
-        cta: "Käy sivuillamme",
+        headline: `Here we are`,
+        body: `${name} is open on weekdays and at weekends.`,
+        cta: "Visit our site",
       },
     ],
-    tarjous: [
+    offer: [
       {
         id: "v1",
-        headline: `Nyt kannattaa tulla käymään`,
-        body: `${name} tarjoaa etua uusille asiakkaille. Kysy lisää.`,
-        cta: "Katso tarjous",
+        headline: `Now is a good time to drop in`,
+        body: `${name} has something for new customers. Ask us more.`,
+        cta: "See the offer",
       },
       {
         id: "v2",
-        headline: `Etu voimassa rajoitetun ajan`,
-        body: `Varaa paikkasi ennen kuin tarjous päättyy.`,
-        cta: "Varaa nyt",
+        headline: `Available for a limited time`,
+        body: `Book your place before the offer ends.`,
+        cta: "Book now",
       },
       {
         id: "v3",
-        headline: `Säästä ensimmäisellä käynnillä`,
-        body: `Mainitse mainos, niin hoidamme loput.`,
-        cta: "Lunasta etu",
+        headline: `Save on your first visit`,
+        body: `Mention this ad and we'll take care of the rest.`,
+        cta: "Claim the offer",
       },
     ],
-    rekrytointi: [
+    recruitment: [
       {
         id: "v1",
-        headline: `Tule töihin meille`,
-        body: `${name} etsii tekijää joukkoonsa. Katso avoimet paikat.`,
-        cta: "Hae paikkaa",
+        headline: `Come and work with us`,
+        body: `${name} is looking for someone to join the team. See the openings.`,
+        cta: "Apply now",
       },
       {
         id: "v2",
-        headline: `Etsimme uutta osaajaa`,
-        body: `Hyvä porukka, selkeät työvuorot ja reilu palkka.`,
-        cta: "Lue lisää",
+        headline: `We're looking for someone new`,
+        body: `Good people, clear shifts and fair pay.`,
+        cta: "Read more",
       },
       {
         id: "v3",
-        headline: `Olisitko sinä seuraava?`,
-        body: `Kerro itsestäsi, niin jutellaan lisää.`,
-        cta: "Ota yhteyttä",
+        headline: `Could you be next?`,
+        body: `Tell us about yourself and let's talk.`,
+        cta: "Get in touch",
       },
     ],
   };
@@ -549,4 +596,260 @@ function mockCopy(
     body: v.body.slice(0, limits.body),
     cta: v.cta.slice(0, limits.cta),
   }));
+}
+
+// ------------------------------------------- onboarding: business signals
+
+/**
+ * Onboarding microsite (PRD §7 step 1): read business intelligence off the
+ * scraped site so the recommendation can be sharpened. Returns null whenever
+ * the answer would be guesswork — no key, sparse page, or a bad response —
+ * and the flow falls back to rule-based logic without telling the user.
+ */
+
+/** Below this much visible text the page is a splash or login wall. */
+const MIN_SIGNAL_TEXT = 200;
+
+const SIGNALS_SYSTEM = `You read a scraped business website and extract structured facts about the business for an advertising recommendation engine.
+
+Return ONLY JSON:
+{
+  "businessName": string,
+  "industry": string,
+  "contentType": string,
+  "contentTypeAlternatives": [string, string, string, string],
+  "category": "real-estate" | "b2b-professional" | "ecommerce" | "local-services" | "other",
+  "summary": string,
+  "productsOrServices": string,
+  "geographicSignal": string,
+  "geographicKind": "city" | "country" | "global",
+  "geographicAlternatives": [string, string, string, string],
+  "ecommerce": boolean,
+  "national": boolean,
+  "audienceSignals": string[],
+  "confidence": number
+}
+
+Rules:
+- Write every string in English, even though the site is likely Finnish.
+- "summary" is one plain sentence a business owner would recognise as their own.
+- "contentType" is the single best IAB Content Taxonomy 3.1 Name for this website (e.g. "Bars & Restaurants", "Real Estate Buying and Selling"). Use an official Name, as specific as possible. Never invent a label.
+- "contentTypeAlternatives" is exactly four other official IAB Names — the next-closest matches, ordered closest first. No duplicates, and none equal to contentType.
+- "geographicSignal" is where the business operates, at the most specific level the site actually supports:
+  - a city name when they serve one city or a clearly local area (e.g. "Helsinki")
+  - a country name when they serve a whole country or several cities in one country with no single home city (e.g. "Finland")
+  - "Global" when they serve many countries, sell worldwide, or have no geographic limit
+- Prefer city over country over Global when the evidence supports it.
+- Never invent a city that is not on the page. If you only know the country, use the country. If the site does not say, set geographicSignal to "".
+- "geographicKind" matches geographicSignal: "city", "country", or "global".
+- "geographicAlternatives" is exactly four other places the advertiser might pick instead — typically the parent country (if a city), "Global", nearby cities, or neighbouring countries. No duplicates, and none equal to geographicSignal. "Global" must be one of them unless geographicSignal is already "Global".
+- "national" is true only if they serve all of Finland or operate globally.
+- "ecommerce" is true only if you see a cart, a shop, or product pages with prices.
+- "audienceSignals" are short phrases the site uses about who it serves, e.g. ["families", "professionals"]. Empty array if none.
+- "confidence" is 0 to 1: how sure you are the above is right. Score low when the page is thin, generic, or mostly navigation.
+- Never invent a business name, a location, or a claim that is not on the page.`;
+
+export async function extractSignals(
+  s: ScrapeResult
+): Promise<BusinessSignals | null> {
+  if (!hasApiKey()) return null;
+  if ((s.text?.trim().length ?? 0) < MIN_SIGNAL_TEXT) return null;
+
+  const user = `Website: ${s.finalUrl}
+
+<title>${s.title}</title>
+<og-site-name>${s.ogSiteName}</og-site-name>
+<meta-description>${s.metaDescription}</meta-description>
+<og-description>${s.ogDescription}</og-description>
+
+<page-text>
+${s.text.slice(0, 6000)}
+</page-text>`;
+
+  try {
+    const r = await askJson<Partial<BusinessSignals>>(
+      SIGNALS_SYSTEM,
+      user,
+      1400,
+      "low"
+    );
+    const pageText = [
+      s.title,
+      s.ogTitle,
+      s.metaDescription,
+      s.ogDescription,
+      s.text.slice(0, 4000),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return normalizeSignals(r, pageText);
+  } catch {
+    return null;
+  }
+}
+
+const CATEGORIES = new Set([
+  "real-estate",
+  "b2b-professional",
+  "ecommerce",
+  "local-services",
+  "other",
+]);
+
+function normalizeSignals(
+  r: Partial<BusinessSignals>,
+  pageText = ""
+): BusinessSignals | null {
+  const businessName = clean(r.businessName);
+  if (!businessName) return null;
+
+  const category = CATEGORIES.has(String(r.category))
+    ? (r.category as BusinessSignals["category"])
+    : "other";
+
+  const confidence = Number(r.confidence);
+
+  const content = resolveContentTypePicks(
+    clean(r.contentType) || clean(r.industry),
+    Array.isArray(r.contentTypeAlternatives)
+      ? r.contentTypeAlternatives.map(clean)
+      : []
+  );
+
+  const rawSignal = clean(r.geographicSignal);
+  const rawKind = String(r.geographicKind ?? "").toLowerCase();
+  const primary =
+    rawKind === "global"
+      ? GLOBAL_LOCATION
+      : rawSignal;
+  const geoFromModel = resolveLocationPicks(
+    primary,
+    Array.isArray(r.geographicAlternatives)
+      ? r.geographicAlternatives.map(clean)
+      : []
+  );
+  const geo =
+    geoFromModel.location || !pageText
+      ? geoFromModel
+      : inferLocationFromText(pageText);
+
+  return {
+    businessName,
+    industry: content.contentType || clean(r.industry),
+    contentType: content.contentType,
+    contentTypeAlternatives: content.contentTypeAlternatives,
+    category,
+    summary: clean(r.summary),
+    productsOrServices: clean(r.productsOrServices),
+    geographicSignal: geo.location,
+    geographicAlternatives: geo.locationAlternatives,
+    geographicKind: locationKind(geo.location),
+    ecommerce: Boolean(r.ecommerce),
+    national: isNationalReach(geo.location),
+    audienceSignals: Array.isArray(r.audienceSignals)
+      ? r.audienceSignals.map(clean).filter(Boolean).slice(0, 6)
+      : [],
+    confidence: Number.isFinite(confidence)
+      ? Math.min(1, Math.max(0, confidence))
+      : 0,
+  };
+}
+
+// ------------------------------------------------------ onboarding: cohorts
+
+/**
+ * Onboarding microsite (PRD §7 step 4 upgrade): rank Alma's own audience
+ * segments (cohorts.json) against a business, instead of the 5 static
+ * audience-type buttons. Unlike the rest of onboarding this genuinely needs
+ * an AI reasoner — the taxonomy has ~700 free-form, Finnish-described rows
+ * with no category or keyword fields to score against deterministically.
+ *
+ * Returns null whenever there is nothing to rank: no key, no cohorts.json,
+ * or a bad response — the audience step falls back to the static list.
+ */
+
+const TYPE_IDS = new Set<AudienceTypeId>([
+  "general-consumers",
+  "business-decision-makers",
+  "homeowners-families",
+  "young-adults",
+  "high-income",
+]);
+
+const COHORTS_SYSTEM = `You match a small business to the most relevant audience segments from Alma's own audience taxonomy, for an advertising recommendation engine.
+
+You are given the business's profile and a list of candidate segments (id and category path only, one per line, tab-separated). Pick the ones a media planner would actually target this business against.
+
+Reply with JSON ONLY, no explanation and no code fences:
+{ "matches": [ { "id": string, "whyItFits": string, "typeId": "general-consumers" | "business-decision-makers" | "homeowners-families" | "young-adults" | "high-income" } ] }
+
+Rules:
+- Return exactly as many matches as asked for, best fit first, or fewer only if the list has nothing else sensible.
+- "id" must be copied exactly from a candidate in the list. Never invent one.
+- "whyItFits" is one short plain-English sentence specific to this business — not a restatement of the segment's name.
+- "typeId" is whichever of the five given values the segment is closest to, used only for budget and channel weighting.
+- A geo segment (path starting "Geo>") is only worth including if it reflects where this business actually wants to reach people — skip it otherwise.
+- Any concrete demographic or numeric criterion in <advertiser-notes> (age, income, life stage, education, household type, etc.) is a strong, literal filter — check it against every "Socio>" segment for a real match, not just an approximate one. An age range like "18-45" must surface every "Socio>Age Group" segment whose range overlaps it at all (e.g. 18-24, 25-34, 35-44 all overlap "18-45"), not just one.
+- If nothing in the list is a sensible fit, return an empty "matches" array. Do not force a match.`;
+
+interface CohortsResponse {
+  matches: { id: string; whyItFits: string; typeId: string }[];
+}
+
+export async function matchCohorts(
+  signals: BusinessSignals | null,
+  goal: OnboardingGoalId | null,
+  regionId: string,
+  city: string,
+  enrichment: string,
+  exclude: string[],
+  limit: number
+): Promise<CohortMatch[] | null> {
+  if (!hasApiKey()) return null;
+
+  const prepared = prepareCohortCandidates({ regionId, city, enrichment, exclude });
+  if (!prepared) return null;
+
+  const user = `Business category: ${signals?.category ?? "unknown"}
+What they sell: ${signals?.productsOrServices || "unknown"}
+Summary: ${signals?.summary || "unknown"}
+Audience hints from their site: ${(signals?.audienceSignals ?? []).join(", ") || "none"}
+Campaign goal: ${goal ?? "not chosen yet"}
+
+<advertiser-notes>
+${enrichment || "(none given)"}
+</advertiser-notes>
+
+Return up to ${limit} matches.
+
+<candidate-segments>
+${prepared.promptBlock}
+</candidate-segments>`;
+
+  try {
+    const r = await askJson<CohortsResponse>(COHORTS_SYSTEM, user, 1200, "medium");
+    return normalizeCohortMatches(r, prepared.byId, limit);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCohortMatches(
+  r: CohortsResponse,
+  byId: Map<string, Cohort>,
+  limit: number
+): CohortMatch[] {
+  const matches = Array.isArray(r?.matches) ? r.matches : [];
+  return matches
+    .map((m): CohortMatch | null => {
+      const cohort = byId.get(String(m?.id));
+      const whyItFits = clean(m?.whyItFits);
+      if (!cohort || !whyItFits) return null;
+      const typeId = TYPE_IDS.has(m?.typeId as AudienceTypeId)
+        ? (m.typeId as AudienceTypeId)
+        : "general-consumers";
+      return { cohort, whyItFits, typeId };
+    })
+    .filter((m): m is CohortMatch => m !== null)
+    .slice(0, limit);
 }

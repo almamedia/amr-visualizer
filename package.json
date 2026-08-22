@@ -3,24 +3,37 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "node --env-file-if-exists=.env.local node_modules/.bin/react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc",
+    "xandr:live-test": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-live-test.ts",
+    "xandr:cleanup": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-cleanup.ts",
+    "xandr:targeting": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-targeting-probe.ts",
+    "xandr:probe": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-probe.ts",
+    "xandr:dry-run": "node --env-file-if-exists=.env.local --experimental-strip-types --import ./scripts/register-ts.mjs scripts/xandr-dry-run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@react-router/node": "^7.18.2",
+    "@react-router/serve": "^7.18.2",
     "archiver": "^7.0.1",
     "cheerio": "^1.0.0",
-    "next": "^15.4.0",
+    "isbot": "^5.2.1",
     "playwright": "^1.54.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-router": "^7.18.2"
   },
   "devDependencies": {
+    "@react-router/dev": "^7.18.2",
     "@types/archiver": "^6.0.3",
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "typescript": "^5.8.0"
-  }
+    "typescript": "^5.8.0",
+    "vite": "^6.4.3",
+    "vite-tsconfig-paths": "^5.1.4"
+  },
+  "type": "module"
 }

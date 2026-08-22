@@ -1,6 +1,5 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
+import type { Route } from "./+types/studio";
 import type {
   BrandCard,
   CopyVariant,
@@ -8,19 +7,65 @@ import type {
   GoalId,
   TextLimits,
 } from "@/lib/types";
+import { BRIEF_STORAGE_KEY } from "@/lib/onboarding/brief";
+import type { CreativeBrief, GoalId as BriefGoalId } from "@/lib/onboarding/types";
+import { renderBannerHtml } from "@/lib/templates/banner";
+import { normalizeBrandContentType } from "@/lib/content-taxonomy";
+import { ContentTypeSelect } from "@/app/components/content-type-select";
+
+export function meta(_: Route.MetaArgs) {
+  return [
+    { title: "AMR Asset Studio" },
+    {
+      name: "description",
+      content:
+        "Enter your website address and get finished, spec-compliant display ads for Alma's titles.",
+    },
+  ];
+}
 
 type Phase = "input" | "brand" | "results";
 
+/** Onboarding goal → studio campaign goal. Onboarding speaks the advertiser's
+ *  language ("drive online sales"); the studio speaks the spec library's. */
+const GOAL_FROM_BRIEF: Record<BriefGoalId, GoalId> = {
+  awareness: "awareness",
+  conversion: "offer",
+  local: "awareness",
+};
+
 const GOALS: { id: GoalId; name: string; hint: string }[] = [
-  { id: "tunnettuus", name: "Tunnettuus", hint: "Tee itsesi tunnetuksi" },
-  { id: "tarjous", name: "Tarjous", hint: "Nosta etu tai tarjous esiin" },
-  { id: "rekrytointi", name: "Rekrytointi", hint: "Houkuttele hakijoita" },
+  { id: "awareness", name: "Awareness", hint: "Make yourself known" },
+  { id: "offer", name: "Offer", hint: "Put a benefit or offer front and centre" },
+  { id: "recruitment", name: "Recruitment", hint: "Attract people to apply" },
 ];
 
-export default function Page() {
+/** What each colour role actually does in the rendered banner — see
+ *  resolveBannerColors() in lib/templates/banner.ts, which this mirrors. */
+const COLOR_HINTS: Record<keyof BrandCard["colors"], string> = {
+  primary: "The company name, and the background when there's no image.",
+  accent: "The button, and the line beside the image.",
+  secondary: "Backup colour for the background. Rarely seen.",
+  background: "The background when there's an image.",
+  text: "The headline and body text.",
+};
+
+/** Placeholder copy for the colour preview — real copy is written later, by
+ *  Claude or the mock templates, once the goal is chosen and generation runs. */
+const COLOR_PREVIEW_COPY: CopyVariant = {
+  id: "preview",
+  headline: "Your headline goes here",
+  body: "",
+  cta: "Button",
+};
+
+const COLOR_PREVIEW_WIDTH = 280;
+const COLOR_PREVIEW_HEIGHT = 165;
+
+export default function Studio() {
   const [phase, setPhase] = useState<Phase>("input");
   const [url, setUrl] = useState("");
-  const [goal, setGoal] = useState<GoalId>("tunnettuus");
+  const [goal, setGoal] = useState<GoalId>("awareness");
 
   const [brand, setBrand] = useState<BrandCard | null>(null);
   const [assets, setAssets] = useState<GeneratedAsset[]>([]);
@@ -29,11 +74,54 @@ export default function Page() {
   const [limits, setLimits] = useState<TextLimits | null>(null);
   const [zipAll, setZipAll] = useState(false);
   const [delivered, setDelivered] = useState(false);
+  const [booking, setBooking] = useState(false);
+  const [bookResult, setBookResult] = useState<{
+    lineItemId: number | null;
+  } | null>(null);
+  const [bookError, setBookError] = useState<string | null>(null);
+
+  /** The brief handed over by the onboarding microsite. When it exists the
+   *  page need not be analysed again — the brand card came with it. */
+  const [brief, setBrief] = useState<CreativeBrief | null>(null);
+  /** Recommended formats from the brief. Empty means the spec defaults. */
+  const [formatIds, setFormatIds] = useState<string[] | undefined>(undefined);
 
   const [busy, setBusy] = useState<null | "extract" | "generate" | "zip">(null);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [aiEnabled, setAiEnabled] = useState(true);
+
+  /** Pick up the brief onboarding left, once on load, and jump straight to the
+   *  brand card check: the user has already given us the address. */
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(BRIEF_STORAGE_KEY);
+      if (raw) sessionStorage.removeItem(BRIEF_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+
+    try {
+      const incoming = JSON.parse(raw) as CreativeBrief;
+      setBrief(incoming);
+      setGoal(GOAL_FROM_BRIEF[incoming.goal.id] ?? "awareness");
+
+      const wanted = incoming.formats
+        .map((f) => f.specFormatId)
+        .filter((id): id is string => Boolean(id));
+      if (wanted.length) setFormatIds(wanted);
+
+      if (incoming.brand) {
+        setBrand(normalizeBrandContentType(incoming.brand));
+        setUrl(incoming.brand.sourceUrl);
+        setPhase("brand");
+      }
+    } catch {
+      // A broken brief must not block normal use of the studio.
+    }
+  }, []);
 
   async function handleExtract(e: React.FormEvent) {
     e.preventDefault();
@@ -47,9 +135,9 @@ export default function Page() {
         body: JSON.stringify({ url }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Analysointi epäonnistui.");
+      if (!res.ok) throw new Error(data.error ?? "Analysis failed.");
 
-      setBrand(data.brand);
+      setBrand(normalizeBrandContentType(data.brand));
       setAiEnabled(data.meta?.aiEnabled ?? true);
       setWarnings(data.brand?.warnings ?? []);
       setPhase("brand");
@@ -68,10 +156,10 @@ export default function Page() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ brand, goalId: goal }),
+        body: JSON.stringify({ brand, goalId: goal, formatIds }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Generointi epäonnistui.");
+      if (!res.ok) throw new Error(data.error ?? "Generation failed.");
 
       setAssets(data.assets);
       setVariants(data.copyVariants);
@@ -86,8 +174,8 @@ export default function Page() {
     }
   }
 
-  /** Renderöi aineistot uudelleen käsin muokatuilla teksteillä.
-   *  Claudea ei kutsuta, joten tämä on selvästi nopeampi kuin ensigenerointi. */
+  /** Re-render the assets with hand-edited copy. Claude is not called, so this
+   *  is clearly faster than the first generation. */
   async function handleCopyEdit(edited: CopyVariant) {
     if (!brand) return;
     const next = variants.map((v) => (v.id === edited.id ? edited : v));
@@ -97,10 +185,10 @@ export default function Page() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ brand, goalId: goal, copyVariants: next }),
+        body: JSON.stringify({ brand, goalId: goal, copyVariants: next, formatIds }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Päivitys epäonnistui.");
+      if (!res.ok) throw new Error(data.error ?? "Update failed.");
 
       setAssets(data.assets);
       setVariants(data.copyVariants);
@@ -113,13 +201,48 @@ export default function Page() {
     }
   }
 
+  /**
+   * Book the finished ad into the adserver. Only possible when the user came
+   * through onboarding: the brief is what carries the dates, budget and
+   * targeting a line item needs. Without one the button says so instead.
+   */
+  async function deliver() {
+    if (!brief?.booking) {
+      setDelivered(true);
+      return;
+    }
+
+    setBooking(true);
+    setBookError(null);
+    try {
+      // Only the variant the user settled on is booked — the other two were
+      // alternatives, not extra ads to run.
+      const chosen = assets.filter((a) => a.id.endsWith(`-${activeVariant}`));
+      const res = await fetch("/api/book", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ brief, assets: chosen }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "The booking failed.");
+      // Warnings stay in the API response for whoever is debugging a booking;
+      // the advertiser is not the audience for them.
+      if (data.warnings?.length) console.info("Xandr booking warnings:", data.warnings);
+      setBookResult({ lineItemId: data.lineItemId });
+    } catch (e) {
+      setBookError(e instanceof Error ? e.message : "The booking failed.");
+    } finally {
+      setBooking(false);
+    }
+  }
+
   async function handleZip() {
     if (!brand) return;
     setBusy("zip");
     setError(null);
     try {
-      // Oletuksena mukaan vain valittu variaatio: vastaanottajan ei pidä
-      // joutua arvaamaan, mikä kolmesta versiosta oli se oikea.
+      // By default only the selected variant goes in: the recipient should
+      // not have to guess which of the three was the right one.
       const packed = zipAll
         ? assets
         : assets.filter((a) => a.id.endsWith(`-${activeVariant}`));
@@ -131,22 +254,22 @@ export default function Page() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Zip-paketin luonti epäonnistui.");
+        throw new Error(data.error ?? "Building the zip package failed.");
       }
       const blob = await res.blob();
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = "amr-aineistot.zip";
+      link.download = "amr-ad-assets.zip";
       link.click();
       URL.revokeObjectURL(link.href);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Lataus epäonnistui.");
+      setError(err instanceof Error ? err.message : "Download failed.");
     } finally {
       setBusy(null);
     }
   }
 
-  /** Tyhjentää kaiken ja palaa alkuun. Vain "Aloita alusta" käyttää tätä. */
+  /** Clears everything and returns to the start. Only "Start over" uses this. */
   function reset() {
     setPhase("input");
     setUrl("");
@@ -157,9 +280,9 @@ export default function Page() {
     setError(null);
   }
 
-  /** Palaa edelliseen vaiheeseen tiedot tallella. "Takaisin" kutsui aiemmin
-   *  resetiä, jolloin osoite ja koko analyysi katosivat — käyttäjä odottaa
-   *  palaavansa, ei aloittavansa alusta. */
+  /** Go back a step with everything intact. "Back" used to call reset, which
+   *  lost the address and the whole analysis — a user going back expects to go
+   *  back, not to start over. */
   function back(to: Phase) {
     setError(null);
     setPhase(to);
@@ -179,34 +302,45 @@ export default function Page() {
             Musta versio, koska pohja on vaalea paperi. */}
         <img className="logo" src="/alma-logo-black.png" alt="Alma" />
         <div>
-          <h1>Aineistostudio</h1>
+          <h1>Asset Studio</h1>
           <p>
-            Syötä verkkosivusi osoite ja saat valmiit, spec-yhteensopivat
-            mainosaineistot Alman medioihin.
+            Enter your website address and get finished, spec-compliant display
+            ads for Alma's titles.
           </p>
         </div>
       </header>
 
       <div className="steps">
-        <span className={`step ${stepClass(phase, "input")}`}>1 · Syöttö</span>
+        <span className={`step ${stepClass(phase, "input")}`}>1 · Input</span>
         <span className={`step ${stepClass(phase, "brand")}`}>
-          2 · Brändikortti
+          2 · Brand card
         </span>
         <span className={`step ${stepClass(phase, "results")}`}>
-          3 · Aineistot
+          3 · Assets
         </span>
       </div>
 
       {!aiEnabled && (
         <div className="notice warn">
-          <strong>Tekoälyanalyysi ei ole käytössä.</strong> Aineistot syntyvät
-          silti: brändi luetaan suoraan sivun rakenteesta ja tekstit tulevat
-          valmiista pohjista. Tulos on karkeampi, ja kaikki kentät ovat
-          muokattavissa.
+          <strong>AI analysis is switched off.</strong> The assets still get
+          made: the brand is read straight off the page structure and the copy
+          comes from set templates. The result is rougher, and every field is
+          editable.
           <span className="devhint">
-            Kehittäjälle: lisää <code>ANTHROPIC_API_KEY</code> tiedostoon{" "}
-            <code>.env.local</code> ja käynnistä palvelin uudelleen.
+            For developers: add <code>ANTHROPIC_API_KEY</code> to{" "}
+            <code>.env.local</code> and restart the server.
           </span>
+        </div>
+      )}
+
+      {/* We arrived from onboarding with a finished plan: say what has already
+          been decided, so nobody wonders where the data came from. */}
+      {brief && (
+        <div className="notice">
+          <strong>Continuing from your plan.</strong> Goal: {brief.goal.label}.
+          Recommended ad sizes:{" "}
+          {brief.formats.map((f) => f.smeName).join(", ")}. Your brand card is
+          already filled in — check it and carry on.
         </div>
       )}
 
@@ -221,28 +355,28 @@ export default function Page() {
         <form className="card" onSubmit={handleExtract}>
           <div className="card-bar" />
           <div className="card-body">
-            <span className="eyebrow">Vaihe 1</span>
-            <h2>Verkkosivun osoite</h2>
+            <span className="eyebrow">Step 1</span>
+            <h2>Your website address</h2>
             <p className="sub">
-              Poimimme sivulta logon, värit, fontit ja kuvat. Voit muokata
-              kaikkea ennen aineistojen tekoa.
+              We read the logo, colours, fonts and images off your page. You can
+              change any of it before the assets are made.
             </p>
 
             <div className="field">
-              <label htmlFor="url">Osoite</label>
+              <label htmlFor="url">Address</label>
               <input
                 id="url"
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="esim. kampaamo-esimerkki.fi"
+                placeholder="e.g. yourbusiness.fi"
                 autoComplete="url"
                 required
               />
             </div>
 
             <div className="field">
-              <label>Kampanjatavoite</label>
+              <label>Campaign goal</label>
               <div className="goals">
                 {GOALS.map((g) => (
                   <button
@@ -262,13 +396,13 @@ export default function Page() {
             <div className="actions">
               <button type="submit" disabled={busy !== null || !url.trim()}>
                 {busy === "extract"
-                  ? "Analysoidaan sivua…"
+                  ? "Analysing the page…"
                   : brand
-                  ? "Analysoi uudelleen"
-                  : "Analysoi sivu"}
+                  ? "Analyse again"
+                  : "Analyse the page"}
               </button>
-              {/* Aiempi analyysi on tallessa: takaisin tullut käyttäjä ei
-                  joudu odottamaan uutta ajoa päästäkseen eteenpäin. */}
+              {/* The earlier analysis is still here: a user who came back does
+                  not wait for another run to move forward. */}
               {brand && (
                 <button
                   type="button"
@@ -276,7 +410,7 @@ export default function Page() {
                   onClick={() => back("brand")}
                   disabled={busy !== null}
                 >
-                  Jatka brändikorttiin
+                  Continue to the brand card
                 </button>
               )}
             </div>
@@ -304,22 +438,22 @@ export default function Page() {
           <div className="card">
             <div className={`card-bar ${allPass ? "green" : ""}`} />
             <div className="card-body">
-              <span className="eyebrow">Vaihe 3</span>
+              <span className="eyebrow">Step 3</span>
               <h2>
-                Aineistot valmiina{" "}
+                Your assets are ready{" "}
                 <span className={`badge ${allPass ? "ok" : "attention"}`}>
                   {allPass
-                    ? "Kaikki läpäisivät validoinnin"
-                    : "Osa vaatii huomiota"}
+                    ? "All passed validation"
+                    : "Some need attention"}
                 </span>
               </h2>
               <p className="sub">
-                {brand.companyName} · {assets.length} aineistoa ·{" "}
-                {variants.length} tekstivariaatiota
+                {brand.companyName} · {assets.length} assets ·{" "}
+                {variants.length} copy variants
               </p>
 
               <div className="field">
-                <label>Tekstivariaatio</label>
+                <label>Copy variant</label>
                 <div className="goals">
                   {variants.map((v, i) => (
                     <button
@@ -331,7 +465,7 @@ export default function Page() {
                       onClick={() => setActiveVariant(v.id)}
                       aria-pressed={activeVariant === v.id}
                     >
-                      Variaatio {i + 1}
+                      Variant {i + 1}
                       <small>{v.headline}</small>
                     </button>
                   ))}
@@ -346,7 +480,7 @@ export default function Page() {
               />
 
               <div className="field zipchoice">
-                <label>Zip-paketin sisältö</label>
+                <label>What goes in the zip</label>
                 <div className="goals">
                   <button
                     type="button"
@@ -354,10 +488,10 @@ export default function Page() {
                     onClick={() => setZipAll(false)}
                     aria-pressed={!zipAll}
                   >
-                    Vain valittu variaatio
+                    Only the selected variant
                     <small>
-                      {shown.length} aineistoa — vastaanottaja tietää mikä on
-                      oikea versio
+                      {shown.length} assets — the recipient knows which version
+                      is the right one
                     </small>
                   </button>
                   <button
@@ -366,8 +500,8 @@ export default function Page() {
                     onClick={() => setZipAll(true)}
                     aria-pressed={zipAll}
                   >
-                    Kaikki variaatiot
-                    <small>{assets.length} aineistoa — A/B-testaukseen</small>
+                    All variants
+                    <small>{assets.length} assets — for A/B testing</small>
                   </button>
                 </div>
               </div>
@@ -375,28 +509,28 @@ export default function Page() {
               <div className="actions">
                 <button onClick={handleZip} disabled={busy !== null}>
                   {busy === "zip" && <span className="spinner" />}
-                  Lataa zip-pakettina
+                  Download as a zip
                 </button>
                 <button
                   className="outline"
                   onClick={handleGenerate}
                   disabled={busy !== null}
                 >
-                  Generoi uudet tekstit
+                  Generate new copy
                 </button>
                 <button
                   className="ghost"
                   onClick={() => back("brand")}
                   disabled={busy !== null}
                 >
-                  Muokkaa brändikorttia
+                  Edit the brand card
                 </button>
                 <button
                   className="ghost"
                   onClick={reset}
                   disabled={busy !== null}
                 >
-                  Aloita alusta
+                  Start over
                 </button>
               </div>
 
@@ -410,33 +544,50 @@ export default function Page() {
             ))}
           </div>
 
-          {/* Polun pää: ilman tätä käyttäjä jää yksin zip-tiedoston kanssa
-              juuri kun kiinnostus on korkeimmillaan. Toimitusta ei ole
-              kytketty, ja se sanotaan suoraan — ei teeskennellä toimivaa. */}
+          {/* The end of the path: without this the user is left alone with a
+              zip file at the exact moment their interest peaks. Delivery is not
+              connected, and that is said plainly — no pretending it works. */}
           <div className="card handoff">
             <div className="card-bar green" />
             <div className="card-body">
-              <span className="eyebrow">Seuraava askel</span>
-              <h2>Aineistot valmiit — entä sitten?</h2>
+              <span className="eyebrow">Next step</span>
+              <h2>The assets are done — what now?</h2>
               <p className="sub">
-                Aineistot täyttävät Alman tekniset vaatimukset ja ovat valmiita
-                kampanjaan. Seuraavaksi ne toimitetaan Almalle ja varataan
-                näkyvyys.
+                They meet Alma's technical requirements and are ready to run.
+                Next they get delivered to Alma and the placement is booked.
               </p>
 
               <div className="actions">
-                <button type="button" onClick={() => setDelivered(true)}>
-                  Toimita Almalle
+                <button
+                  type="button"
+                  onClick={deliver}
+                  disabled={booking || Boolean(bookResult)}
+                >
+                  {booking ? "Booking…" : "Deliver to Alma"}
                 </button>
               </div>
 
-              {delivered && (
+              {bookError && (
                 <div className="notice" style={{ marginTop: 16 }}>
-                  <strong>Tämä on demon paikanvaraus.</strong> Toimitusta ei ole
-                  kytketty: tuotannossa tästä avautuisi aineistojen lähetys ja
-                  kampanjan varaus, tai ne siirtyisivät suoraan
-                  kampanjanhallintaan. Lataa toistaiseksi zip-paketti ja
-                  toimita se sovittua kautta.
+                  <strong>The booking did not go through.</strong> {bookError}
+                </div>
+              )}
+
+              {bookResult && (
+                <div className="notice" style={{ marginTop: 16 }}>
+                  <strong>
+                    Booked — line item {bookResult.lineItemId}.
+                  </strong>{" "}
+                  It is paused until Alma confirms the placement, so nothing is
+                  running yet.
+                </div>
+              )}
+
+              {delivered && !bookResult && !bookError && (
+                <div className="notice" style={{ marginTop: 16 }}>
+                  <strong>Not connected for this ad.</strong> Booking needs the
+                  dates, budget and targeting that only the onboarding flow
+                  collects. Download the zip and send it the agreed way.
                 </div>
               )}
             </div>
@@ -456,7 +607,7 @@ function stepClass(phase: Phase, step: Phase): string {
   return "";
 }
 
-// ---------------------------------------------------------- brändikortti
+// ------------------------------------------------------------ brand card
 
 function BrandEditor({
   brand,
@@ -476,7 +627,7 @@ function BrandEditor({
   busy: boolean;
   onGenerate: () => void;
   onBack: () => void;
-  /** Onko aineistoja jo olemassa — silloin tarjotaan paluu niihin. */
+  /** Whether assets already exist — if so, offer a way back to them. */
   hasResults: boolean;
   onForward: () => void;
 }) {
@@ -496,9 +647,9 @@ function BrandEditor({
       ),
     });
 
-  /** Nostaa kuvan listan kärkeen. Aineistoissa käytetään ensimmäistä
-   *  valittuna olevaa kuvaa, joten ilman tätä ainoa keino vaihtaa pääkuvaa
-   *  olisi poistaa kaikki sitä edeltävät. */
+  /** Lifts an image to the top of the list. The assets use the first enabled
+   *  image, so without this the only way to change the main image would be to
+   *  remove everything ahead of it. */
   const makePrimary = (url: string) => {
     const picked = brand.images.find((i) => i.url === url);
     if (!picked) return;
@@ -524,7 +675,7 @@ function BrandEditor({
       });
       onChange({ ...brand, logoUrl: uri });
     } catch (e) {
-      setUploadError(e instanceof Error ? e.message : "Lataus epäonnistui.");
+      setUploadError(e instanceof Error ? e.message : "Upload failed.");
     }
   }
 
@@ -543,11 +694,11 @@ function BrandEditor({
           uploaded: true,
         }))
       );
-      // Omat kuvat listan kärkeen: käyttäjä lataa kuvan koska haluaa
-      // nimenomaan sen käyttöön, joten siitä tulee suoraan pääkuva.
+      // Uploads go to the top: someone uploads an image because they want
+      // that image used, so it becomes the main image straight away.
       onChange({ ...brand, images: [...added, ...brand.images] });
     } catch (e) {
-      setUploadError(e instanceof Error ? e.message : "Lataus epäonnistui.");
+      setUploadError(e instanceof Error ? e.message : "Upload failed.");
     }
   }
 
@@ -555,11 +706,11 @@ function BrandEditor({
     <div className="card">
       <div className="card-bar" />
       <div className="card-body">
-        <span className="eyebrow">Vaihe 2</span>
-        <h2>Brändikortti</h2>
+        <span className="eyebrow">Step 2</span>
+        <h2>Brand card</h2>
         <p className="sub">
-          Tarkista ja korjaa ennen aineistojen tekoa. Ensimmäistä valittuna
-          olevaa kuvaa käytetään aineistoissa.
+          Check and correct this before the assets are made. The first enabled
+          image is the one they use.
         </p>
 
         <div className="brand-grid">
@@ -570,13 +721,13 @@ function BrandEditor({
               <img src={brand.logoUrl} alt="Logo" />
             ) : (
               <span style={{ color: "#888", fontSize: 13 }}>
-                Ei logoa — käytetään nimeä tekstinä
+                No logo — the name is used as text
               </span>
             )}
           </div>
           <div className="logo-actions">
             <label className="uploadbtn tiny">
-              {brand.logoUrl ? "Vaihda logo" : "Lataa logo"}
+              {brand.logoUrl ? "Replace logo" : "Upload logo"}
               <input
                 type="file"
                 accept="image/*"
@@ -592,7 +743,7 @@ function BrandEditor({
                 className="ghost tiny"
                 onClick={() => set("logoUrl", null)}
               >
-                Poista
+                Remove
               </button>
             )}
           </div>
@@ -600,7 +751,7 @@ function BrandEditor({
 
         <div>
           <div className="field">
-            <label htmlFor="cn">Yrityksen nimi</label>
+            <label htmlFor="cn">Company name</label>
             <input
               id="cn"
               type="text"
@@ -610,7 +761,7 @@ function BrandEditor({
           </div>
 
           <div className="field">
-            <label htmlFor="desc">Mitä yritys tekee</label>
+            <label htmlFor="desc">What the company does</label>
             <textarea
               id="desc"
               value={brand.description}
@@ -620,21 +771,31 @@ function BrandEditor({
 
           <div className="field field-row">
             <div style={{ flex: 1 }}>
-              <label htmlFor="tone">Äänensävy</label>
+              <label htmlFor="tone">Tone of voice</label>
               <input
                 id="tone"
                 type="text"
                 value={brand.tone}
                 onChange={(e) => set("tone", e.target.value)}
+                placeholder="e.g. Warm and friendly"
               />
+              <p className="muted" style={{ marginTop: "var(--space-1)" }}>
+                How your ads should sound — this guides the copy that gets
+                written.
+              </p>
             </div>
             <div style={{ flex: 1 }}>
-              <label htmlFor="ala">Toimiala</label>
-              <input
-                id="ala"
-                type="text"
-                value={brand.toimiala}
-                onChange={(e) => set("toimiala", e.target.value)}
+              <label htmlFor="content-type">Content type</label>
+              <ContentTypeSelect
+                value={brand.contentType}
+                alternatives={brand.contentTypeAlternatives}
+                onChange={(next) =>
+                  onChange({
+                    ...brand,
+                    contentType: next.contentType,
+                    contentTypeAlternatives: next.contentTypeAlternatives,
+                  })
+                }
               />
             </div>
           </div>
@@ -642,15 +803,19 @@ function BrandEditor({
       </div>
 
       <div className="field" style={{ marginTop: 20 }}>
-        <label>Väripaletti</label>
+        <label>Colour palette</label>
+        <p className="muted" style={{ marginBottom: "var(--space-2)" }}>
+          We picked these up from your site. Click a swatch to fix a colour
+          if we got it wrong.
+        </p>
         <div className="swatches">
           {(
             [
-              ["primary", "Pääväri"],
-              ["accent", "Korostus"],
-              ["secondary", "Toissijainen"],
-              ["background", "Tausta"],
-              ["text", "Teksti"],
+              ["primary", "Primary"],
+              ["accent", "Accent"],
+              ["secondary", "Secondary"],
+              ["background", "Background"],
+              ["text", "Text"],
             ] as const
           ).map(([key, label]) => (
             <div className="swatch" key={key}>
@@ -660,51 +825,101 @@ function BrandEditor({
                 onChange={(e) => setColor(key, e.target.value)}
                 aria-label={label}
               />
-              <span>
-                {label}
-                <br />
-                {brand.colors[key]}
-              </span>
+              <div className="swatch-info">
+                <strong>
+                  {label} <span className="swatch-hex">{brand.colors[key]}</span>
+                </strong>
+                <span className="swatch-hint">{COLOR_HINTS[key]}</span>
+              </div>
             </div>
           ))}
         </div>
-      </div>
 
-      <div className="field field-row">
-        <div style={{ flex: 1 }}>
-          <label htmlFor="fh">Otsikkofontti</label>
-          <input
-            id="fh"
-            type="text"
-            value={brand.fonts.heading}
-            onChange={(e) =>
-              onChange({
-                ...brand,
-                fonts: { ...brand.fonts, heading: e.target.value },
-              })
-            }
-          />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label htmlFor="fb">Leipätekstin fontti</label>
-          <input
-            id="fb"
-            type="text"
-            value={brand.fonts.body}
-            onChange={(e) =>
-              onChange({
-                ...brand,
-                fonts: { ...brand.fonts, body: e.target.value },
-              })
-            }
-          />
+        <div className="color-preview-grid">
+          {primaryUrl && (
+            <div className="color-preview-card">
+              <span className="color-preview-label">Ad with image</span>
+              <iframe
+                srcDoc={renderBannerHtml({
+                  width: COLOR_PREVIEW_WIDTH,
+                  height: COLOR_PREVIEW_HEIGHT,
+                  brand,
+                  copy: COLOR_PREVIEW_COPY,
+                  imageDataUri: primaryUrl,
+                  logoDataUri: brand.logoUrl,
+                  animated: false,
+                })}
+                width={COLOR_PREVIEW_WIDTH}
+                height={COLOR_PREVIEW_HEIGHT}
+                title="Ad with image"
+                sandbox="allow-scripts"
+                scrolling="no"
+              />
+            </div>
+          )}
+          <div className="color-preview-card">
+            <span className="color-preview-label">Ad without image</span>
+            <iframe
+              srcDoc={renderBannerHtml({
+                width: COLOR_PREVIEW_WIDTH,
+                height: COLOR_PREVIEW_HEIGHT,
+                brand,
+                copy: COLOR_PREVIEW_COPY,
+                imageDataUri: null,
+                logoDataUri: brand.logoUrl,
+                animated: false,
+              })}
+              width={COLOR_PREVIEW_WIDTH}
+              height={COLOR_PREVIEW_HEIGHT}
+              title="Ad without image"
+              sandbox="allow-scripts"
+              scrolling="no"
+            />
+          </div>
         </div>
       </div>
 
       <div className="field">
+        <div className="field-row">
+          <div style={{ flex: 1 }}>
+            <label htmlFor="fh">Heading font</label>
+            <input
+              id="fh"
+              type="text"
+              value={brand.fonts.heading}
+              onChange={(e) =>
+                onChange({
+                  ...brand,
+                  fonts: { ...brand.fonts, heading: e.target.value },
+                })
+              }
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label htmlFor="fb">Body font</label>
+            <input
+              id="fb"
+              type="text"
+              value={brand.fonts.body}
+              onChange={(e) =>
+                onChange({
+                  ...brand,
+                  fonts: { ...brand.fonts, body: e.target.value },
+                })
+              }
+            />
+          </div>
+        </div>
+        <p className="muted" style={{ marginTop: "var(--space-1)" }}>
+          The ad uses the closest system font to this, not the exact
+          typeface — Alma's file-size limit rules out loading a web font.
+        </p>
+      </div>
+
+      <div className="field">
         <label>
-          Kuvat ({enabledCount} valittuna
-          {enabledCount === 0 ? " — aineistot tehdään ilman kuvaa" : ""})
+          Images ({enabledCount} selected
+          {enabledCount === 0 ? " — the assets will be made without one" : ""})
         </label>
 
         {uploadError && (
@@ -713,12 +928,12 @@ function BrandEditor({
           </div>
         )}
 
-        {/* Latauslaatta on ruudukon ensimmäinen ruutu: toiminto on siellä
-            missä kuvatkin, ei erillään sivun reunassa. */}
+        {/* The upload tile is the first cell of the grid: the action sits where
+            the images are, not off on its own at the edge of the page. */}
         <div className="images">
           <label className="uploadtile">
             <span className="uploadtile-plus">+</span>
-            <span>Lisää omia kuvia</span>
+            <span>Add your own images</span>
             <input
               type="file"
               accept="image/*"
@@ -741,16 +956,16 @@ function BrandEditor({
                   key={img.url}
                 >
                   <img src={img.url} alt={img.alt} />
-                  {isPrimary && <span className="imgflag">Pääkuva</span>}
-                  {img.uploaded && <span className="imgown">Oma kuva</span>}
+                  {isPrimary && <span className="imgflag">Main image</span>}
+                  {img.uploaded && <span className="imgown">Your upload</span>}
                   <div className="bar">
-                    <span>{img.enabled ? "Käytössä" : "Pois"}</span>
+                    <span>{img.enabled ? "In use" : "Dropped"}</span>
                     <button
                       type="button"
                       className="ghost tiny"
                       onClick={() => toggleImage(img.url)}
                     >
-                      {img.enabled ? "Poista" : "Palauta"}
+                      {img.enabled ? "Drop" : "Restore"}
                     </button>
                   </div>
                   {!isPrimary && img.enabled && (
@@ -759,7 +974,7 @@ function BrandEditor({
                       className="outline tiny imgprimary"
                       onClick={() => makePrimary(img.url)}
                     >
-                      Aseta pääkuvaksi
+                      Make main image
                     </button>
                   )}
                 </div>
@@ -769,14 +984,14 @@ function BrandEditor({
 
         {brand.images.length === 0 && (
           <p className="muted" style={{ marginTop: "var(--space-2)" }}>
-            Sivulta ei löytynyt käyttökelpoisia kuvia. Lataa oma kuva tai anna
-            aineistojen rakentua väreillä ja typografialla.
+            No usable images were found on the page. Upload your own, or let
+            the assets be built from colour and type alone.
           </p>
         )}
       </div>
 
       <div className="field">
-        <label>Kampanjatavoite</label>
+        <label>Campaign goal</label>
         <div className="goals">
           {GOALS.map((g) => (
             <button
@@ -795,15 +1010,15 @@ function BrandEditor({
 
         <div className="actions">
           <button onClick={onGenerate} disabled={busy}>
-            {busy ? "Luodaan aineistoja…" : "Luo aineistot"}
+            {busy ? "Making the assets…" : "Make the assets"}
           </button>
           {hasResults && (
             <button className="outline" onClick={onForward} disabled={busy}>
-              Palaa aineistoihin
+              Back to the assets
             </button>
           )}
           <button className="ghost" onClick={onBack} disabled={busy}>
-            Takaisin
+            Back
           </button>
         </div>
         {busy && <ProgressNote steps={GENERATE_STEPS} />}
@@ -812,49 +1027,49 @@ function BrandEditor({
   );
 }
 
-// --------------------------------------------------------- kuvan lataus
+// ------------------------------------------------------------ image upload
 
-/** Puhelinkuva on helposti 8 Mt. Se pienennetään selaimessa ennen kuin se
- *  menee tilaan ja sitä kautta generointipyynnön mukana palvelimelle. */
+/** A phone photo is easily 8 MB. It is scaled down in the browser before it
+ *  enters state and rides along to the server on the generate request. */
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-/** Valokuvan pisin sivu. Suurin banneri on 1600 px leveä. */
+/** A photo's longest side. The largest banner is 1600 px wide. */
 const PHOTO_MAX_DIM = 1600;
-/** Logo piirtyy bannerissa korkeintaan ~90 px korkeana, joten 320 riittää
- *  myös tarkoille näytöille — ja pitää HTML5-paketin painorajan alla. */
+/** A logo draws at most ~90 px tall in a banner, so 320 is plenty even on
+ *  sharp displays — and keeps the HTML5 package under its weight limit. */
 const LOGO_MAX_DIM = 320;
 
 async function readAsDataUri(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("Tiedoston luku epäonnistui."));
+    reader.onerror = () => reject(new Error("Reading the file failed."));
     reader.readAsDataURL(file);
   });
 }
 
 /**
- * Lukee kuvatiedoston ja skaalaa sen data-URI:ksi.
- * Logo säilytetään PNG:nä, koska JPEG tuhoaisi läpinäkyvän taustan.
+ * Read an image file and scale it into a data URI.
+ * A logo stays PNG, because JPEG would destroy its transparent background.
  */
 async function fileToDataUri(
   file: File,
   opts: { maxDim: number; keepAlpha: boolean }
 ): Promise<string> {
   if (!file.type.startsWith("image/")) {
-    throw new Error("Valitse kuvatiedosto (JPG, PNG, GIF, WebP tai SVG).");
+    throw new Error("Choose an image file (JPG, PNG, GIF, WebP or SVG).");
   }
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error(
-      `Kuva on liian suuri (${Math.round(
+      `That image is too large (${Math.round(
         file.size / 1024 / 1024
-      )} Mt). Enimmäiskoko on 25 Mt.`
+      )} MB). The maximum is 25 MB.`
     );
   }
 
   const raw = await readAsDataUri(file);
 
-  // SVG:llä ei ole pikselimittoja, joten sitä ei piirretä kankaalle —
-  // se on jo valmiiksi kevyt ja skaalautuu itsestään.
+  // An SVG has no pixel dimensions, so it is not drawn to a canvas — it is
+  // already light and scales on its own.
   if (file.type === "image/svg+xml") return raw;
 
   const img = new Image();
@@ -863,7 +1078,7 @@ async function fileToDataUri(
 
   const w = img.naturalWidth;
   const h = img.naturalHeight;
-  if (!w || !h) throw new Error("Kuvaa ei voitu lukea.");
+  if (!w || !h) throw new Error("The image could not be read.");
 
   const scale = Math.min(1, opts.maxDim / Math.max(w, h));
   const canvas = document.createElement("canvas");
@@ -871,7 +1086,7 @@ async function fileToDataUri(
   canvas.height = Math.round(h * scale);
 
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Kuvan käsittely ei onnistunut selaimessa.");
+  if (!ctx) throw new Error("The browser could not process the image.");
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
   return opts.keepAlpha
@@ -879,23 +1094,23 @@ async function fileToDataUri(
     : canvas.toDataURL("image/jpeg", 0.85);
 }
 
-// ------------------------------------------------------------- odotus
+// ---------------------------------------------------------------- waiting
 
-/** Viestit seuraavat putken todellista suoritusjärjestystä ja ajoitus on
- *  mitattu tyypillisistä ajoista. Ne kertovat mitä on menossa — eivät väitä
- *  tietävänsä prosentteja, joita palvelin ei raportoi. */
+/** These messages follow the pipeline's real order of execution, timed from
+ *  typical runs. They say what is happening — they do not claim to know a
+ *  percentage the server never reports. */
 const EXTRACT_STEPS = [
-  { at: 0, text: "Haetaan verkkosivua…" },
-  { at: 2500, text: "Luetaan värit, fontit ja logo…" },
-  { at: 5000, text: "Katsotaan kuvat läpi…" },
-  { at: 9000, text: "Kootaan brändikorttia…" },
+  { at: 0, text: "Fetching your website…" },
+  { at: 2500, text: "Reading colours, fonts and logo…" },
+  { at: 5000, text: "Looking through the images…" },
+  { at: 9000, text: "Assembling the brand card…" },
 ];
 
 const GENERATE_STEPS = [
-  { at: 0, text: "Kirjoitetaan mainostekstejä…" },
-  { at: 5000, text: "Sovitetaan kuvat kokoihin…" },
-  { at: 9000, text: "Renderöidään aineistoja…" },
-  { at: 14000, text: "Tarkistetaan speksit ja kontrastit…" },
+  { at: 0, text: "Writing the ad copy…" },
+  { at: 5000, text: "Fitting images to each size…" },
+  { at: 9000, text: "Rendering the assets…" },
+  { at: 14000, text: "Checking specs and contrast…" },
 ];
 
 function ProgressNote({
@@ -922,12 +1137,11 @@ function ProgressNote({
   );
 }
 
-// ---------------------------------------------------------- copy-editori
+// ------------------------------------------------------------- copy editor
 
 /**
- * Tekstien tarkistus ja korjaus ennen latausta. Merkkilaskuri näyttää
- * tiukimman rajan, jotta teksti mahtuu jokaiseen kokoon — sama sääntö, jolla
- * copy alun perin generoidaan.
+ * Check and fix the copy before download. The counter shows the tightest limit,
+ * so the text fits every size — the same rule the copy was generated under.
  */
 function CopyEditor({
   variant,
@@ -942,7 +1156,7 @@ function CopyEditor({
 }) {
   const [draft, setDraft] = useState<CopyVariant | null>(null);
 
-  // Vaihda luonnos, kun käyttäjä valitsee toisen variaation.
+  // Swap the draft when the user selects a different variant.
   const current = draft?.id === variant?.id ? draft : variant;
   if (!current || !variant) return null;
 
@@ -966,15 +1180,15 @@ function CopyEditor({
 
   return (
     <div className="field copy-editor">
-      <label>Tarkista tekstit</label>
+      <label>Check the copy</label>
       <p className="muted" style={{ marginTop: -2, marginBottom: 12 }}>
-        Lue tekstit läpi ennen latausta. Merkkiraja on tiukimman koon mukaan,
-        jotta sama teksti mahtuu jokaiseen aineistoon.
+        Read these through before downloading. The character limit follows the
+        tightest size, so the same text fits every asset.
       </p>
 
       <div className="copy-field">
         <div className="copy-label">
-          <span>Otsikko</span>
+          <span>Headline</span>
           {counter(current.headline, limits?.headline)}
         </div>
         <input
@@ -986,7 +1200,7 @@ function CopyEditor({
 
       <div className="copy-field">
         <div className="copy-label">
-          <span>Leipäteksti</span>
+          <span>Body</span>
           {counter(current.body, limits?.body)}
         </div>
         <textarea
@@ -1014,20 +1228,20 @@ function CopyEditor({
         onClick={() => onSave(current)}
       >
         {busy && <span className="spinner" />}
-        {busy ? "Päivitetään…" : "Päivitä aineistot"}
+        {busy ? "Updating…" : "Update the assets"}
       </button>
     </div>
   );
 }
 
-// ------------------------------------------------------------- aineisto
+// ----------------------------------------------------------------- asset
 
 const PREVIEW_WIDTH = 300;
 
 function AssetCard({ asset }: { asset: GeneratedAsset }) {
   const scale = Math.min(1, PREVIEW_WIDTH / asset.width);
-  // Animaatio ajetaan kerran latauksessa ja on ohi noin sekunnissa. Iframen
-  // uudelleenluonti avaimen vaihdolla on ainoa tapa nähdä se uudestaan.
+  // The animation runs once on load and is over in about a second. Recreating
+  // the iframe by changing its key is the only way to see it again.
   const [replay, setReplay] = useState(0);
 
   return (
@@ -1079,13 +1293,13 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
           <span
             className={`badge ${asset.validation.pass ? "ok" : "attention"}`}
           >
-            {asset.validation.pass ? "Hyväksytty" : "Huomioitavaa"}
+            {asset.validation.pass ? "Passed" : "Needs attention"}
           </span>
         </h3>
         <div className="dim">
           {asset.width}×{asset.height} px ·{" "}
-          {Math.round(asset.fileSizeBytes / 1024)} kt ·{" "}
-          {asset.kind === "html5" ? "HTML5" : "staattinen"}
+          {Math.round(asset.fileSizeBytes / 1024)} kB ·{" "}
+          {asset.kind === "html5" ? "HTML5" : "static"}
         </div>
 
         <ul className="checks">
@@ -1111,7 +1325,7 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
             download={asset.fileName}
           >
             <button type="button" className="outline tiny">
-              Lataa tämä
+              Download this
             </button>
           </a>
 
@@ -1121,7 +1335,7 @@ function AssetCard({ asset }: { asset: GeneratedAsset }) {
               className="ghost tiny"
               onClick={() => setReplay((n) => n + 1)}
             >
-              ↻ Toista animaatio
+              ↻ Replay animation
             </button>
           )}
         </div>

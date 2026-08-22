@@ -1,16 +1,16 @@
 /* ============================================================
-   AMR Aineistostudio — käyttöliittymän tyylit.
-   Rakennettu AMR Design Systemin varaan (claude.ai/design,
-   projekti "AMR Design System"). Tokenit on kopioitu suoraan
-   lähteestä tokens/colors.css, typography.css ja spacing.css.
+   AMR Asset Studio — interface styles.
+   Built on the AMR Design System (claude.ai/design, project
+   "AMR Design System"). The tokens are copied straight from
+   tokens/colors.css, typography.css and spacing.css.
 
-   Moodi: A — Editorial Light. Tämä on työkalu, ei mainos:
-   lomakepainotteinen käyttöliittymä lukee paremmin vaalealla
-   pohjalla, ja mainosten esikatselut istuvat neutraalille
-   paperille luontevammin kuin täyskylläiselle violetille.
+   Mode: A — Editorial Light. This is a tool, not an ad: a
+   form-led interface reads better on a light ground, and ad
+   previews sit more naturally on neutral paper than on a
+   fully saturated violet.
    ============================================================ */
 
-/* ---------------------------------------------- värit */
+/* --------------------------------------------- colours */
 :root {
   --violet: #9f248f;
   --green: #28b78f;
@@ -27,12 +27,12 @@
   --violet-deepest: #46093e;
   --green-deeper: #146f59;
 
-  /* Kontrastiturvallinen väriteksti. Vain violetti ja vihreä kantavat
-     tekstiä — oliivi ei koskaan, millään pohjalla. */
+  /* Contrast-safe coloured text. Only violet and green carry text —
+     olive never does, on any ground. */
   --violet-on-light: var(--violet); /* 6,28:1 */
-  --green-on-light: var(--green-deeper); /* brändivihreä yksin on 2,37:1 */
+  --green-on-light: var(--green-deeper); /* the brand green alone is 2.37:1 */
 
-  /* Sävytetyt neutraalit: paperi ja muste nojaavat päähueen. */
+  /* Tinted neutrals: the paper and the ink lean toward the main hue. */
   --paper: #faf6f8;
   --paper-alt: #f3edf1;
   --hairline: #e4d8e0;
@@ -52,19 +52,20 @@
   --cta-fill: var(--violet);
   --cta-text: var(--white);
 
-  /* Validoinnin tilat. Design systemissä ei ole virhevärille tokenia
-     — paletti on violetti, vihreä ja oliivi. Vihreä = hyväksytty,
-     violetti = vaatii huomiota. Oliivia ei käytetä tekstiin. */
+  /* Validation states. The design system has no token for an error
+     colour — the palette is violet, green and olive. Green = passed,
+     violet = needs attention. Olive is never used for text. */
   --state-pass: var(--green-on-light);
   --state-pass-bg: var(--green-20);
   --state-attention: var(--violet);
   --state-attention-bg: var(--violet-20);
 
   /* ---------------------------------------------- typografia */
-  /* next/font tarjoaa Archivon muuttujana --font-archivo; literaali nimi jää
-     varalle, jos fonttia käytetään ilman Nextin optimointia. */
-  --font-family: var(--font-archivo), "Archivo", "Helvetica Neue", Arial,
-    sans-serif;
+  /* Archivo haetaan Google Fontsista app/root.tsx:n links-exportissa. Nimi
+     set here as its own token so --font-family stays the same chain as
+     before: next/font used to fill in --font-archivo. */
+  --font-archivo: "Archivo";
+  --font-family: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
   --weight-regular: 400;
   --weight-bold: 800;
 
@@ -82,7 +83,7 @@
   --leading-normal: 1.5;
 
   --tracking-headline: -0.02em;
-  --tracking-finnish: -0.025em;
+  --tracking-tight: -0.025em;
   --tracking-eyebrow: 0.08em;
 
   /* ---------------------------------------------- tila ja muodot */
@@ -131,7 +132,7 @@ body {
 }
 
 /* Kaksi painoa per sommitelma: 800 otsikoihin ja toimintoihin,
-   400 leipätekstiin. Ohutta 100:aa ei käytetä käyttöliittymässä. */
+   400 for body copy. The thin 100 is not used in the interface. */
 
 .wrap {
   max-width: 1120px;
@@ -159,7 +160,7 @@ body {
 .masthead h1 {
   font-size: var(--text-h2);
   font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-finnish);
+  letter-spacing: var(--tracking-tight);
   line-height: var(--leading-snug);
   margin: 0 0 var(--space-1);
   color: var(--text-strong);
@@ -230,7 +231,7 @@ body {
   margin-bottom: var(--space-4);
 }
 
-/* Signature-väripalkki: yksivärinen, hiljainen tunniste. */
+/* Signature colour bar: single-colour, a quiet mark of identity. */
 .card-bar {
   height: var(--bar-height);
   background: var(--violet);
@@ -247,7 +248,7 @@ body {
 .card h2 {
   font-size: var(--text-h3);
   font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-finnish);
+  letter-spacing: var(--tracking-tight);
   line-height: var(--leading-snug);
   margin: 0 0 var(--space-1);
   color: var(--text-strong);
@@ -312,6 +313,302 @@ textarea {
 
 .field-row > * {
   flex: 1;
+}
+
+/* ---------------------------------------------- content type */
+.content-type {
+  position: relative;
+}
+
+button.content-type-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  text-align: left;
+  font-weight: var(--weight-regular);
+  font-size: 16px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--text-body);
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-subtle);
+  background: var(--white);
+  white-space: nowrap;
+}
+
+button.content-type-trigger:hover,
+button.content-type-trigger:focus-visible,
+button.content-type-trigger[aria-expanded="true"] {
+  border-color: var(--violet);
+}
+
+button.content-type-trigger:active:not(:disabled) {
+  transform: none;
+}
+
+.content-type-trigger .placeholder {
+  color: var(--text-muted);
+}
+
+.content-type-chevron {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.content-type-menu {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+button.content-type-option {
+  width: 100%;
+  display: block;
+  text-align: left;
+  font-weight: var(--weight-regular);
+  font-size: 15px;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--text-body);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  white-space: normal;
+}
+
+button.content-type-option:hover,
+button.content-type-option:focus-visible {
+  background: var(--violet-20);
+}
+
+button.content-type-option:active:not(:disabled) {
+  transform: none;
+}
+
+button.content-type-option.else {
+  font-weight: var(--weight-bold);
+  color: var(--violet-on-light);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  margin-top: 4px;
+}
+
+button.content-type-option.current {
+  background: var(--violet-20);
+  font-weight: var(--weight-bold);
+}
+
+button.content-type-option small {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  margin-top: 2px;
+}
+
+.content-type-search {
+  margin-bottom: 6px;
+}
+
+.content-type-empty {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-size: var(--text-small);
+}
+
+/* ---------------------------------------------- multi-select */
+.multi-select {
+  position: relative;
+}
+
+.multi-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  text-align: left;
+  font-family: var(--font-family);
+  font-weight: var(--weight-regular);
+  font-size: 16px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--text-body);
+  min-height: 48px;
+  padding: 8px 12px 8px 10px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-subtle);
+  background: var(--white);
+  cursor: pointer;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+.multi-select-trigger:hover,
+.multi-select-trigger:focus-visible,
+.multi-select-trigger[aria-expanded="true"] {
+  border-color: var(--violet);
+}
+
+.multi-select-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.multi-select-values .placeholder {
+  color: var(--text-muted);
+  padding: 5px 6px;
+}
+
+.multi-select-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 6px 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--violet-20);
+  color: var(--violet-deep);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+}
+
+button.multi-select-chip-x {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--violet-deep);
+  font-size: 14px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0;
+  line-height: 1;
+  cursor: pointer;
+}
+
+button.multi-select-chip-x:hover,
+button.multi-select-chip-x:focus-visible {
+  background: var(--white);
+}
+
+button.multi-select-chip-x:active:not(:disabled) {
+  transform: none;
+}
+
+.multi-select-chevron {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.multi-select-menu {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px;
+}
+
+.multi-select-search {
+  margin-bottom: 6px;
+}
+
+.multi-select-results {
+  max-height: 260px;
+  overflow: auto;
+}
+
+button.multi-select-option {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  font-weight: var(--weight-regular);
+  font-size: 15px;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--text-body);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  white-space: normal;
+}
+
+button.multi-select-option:hover,
+button.multi-select-option:focus-visible,
+button.multi-select-option.active {
+  background: var(--violet-20);
+}
+
+button.multi-select-option:active:not(:disabled) {
+  transform: none;
+}
+
+button.multi-select-option.picked {
+  font-weight: var(--weight-bold);
+}
+
+button.multi-select-option.custom {
+  font-weight: var(--weight-bold);
+  color: var(--violet-on-light);
+}
+
+.multi-select-check {
+  width: 16px;
+  flex: none;
+  color: var(--violet-deep);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.multi-select-option-text {
+  min-width: 0;
+}
+
+.multi-select-option-text small {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  margin-top: 1px;
+}
+
+.multi-select-empty {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-size: var(--text-small);
 }
 
 /* ---------------------------------------------- painikkeet */
@@ -450,14 +747,14 @@ button.tiny {
   text-transform: none;
 }
 
-/* Rajan ylitys ei estä tallennusta — teksti leikataan renderöinnissä
-   sanarajalta — mutta käyttäjän on nähtävä se etukäteen. */
+/* Going over the limit does not block saving — the text is trimmed at a word
+   boundary during rendering — but the user has to see it coming. */
 .counter.over {
   color: var(--violet);
   font-weight: var(--weight-bold);
 }
 
-/* ---------------------------------------------- brändikortti */
+/* ----------------------------------------------- brand card */
 .brand-grid {
   display: grid;
   grid-template-columns: 220px 1fr;
@@ -467,6 +764,10 @@ button.tiny {
 @media (max-width: 760px) {
   .brand-grid {
     grid-template-columns: 1fr;
+  }
+
+  .field-row {
+    flex-direction: column;
   }
 }
 
@@ -494,33 +795,108 @@ button.tiny {
 }
 
 .swatches {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 .swatch {
-  text-align: center;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  text-align: left;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
 }
 
 .swatch input[type="color"] {
-  width: 60px;
-  height: 46px;
-  border: 2px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
   background: none;
   padding: 2px;
   cursor: pointer;
+  flex: none;
 }
 
-.swatch span {
-  display: block;
+.swatch input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.swatch input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+}
+
+.swatch input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+}
+
+.swatch-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.swatch-info strong {
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+}
+
+.swatch-hex {
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch-hint {
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: var(--space-1);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-  text-transform: none;
+  line-height: 1.35;
+}
+
+/* Genuine live previews, not mockups: they call the same renderBannerHtml()
+   used for the finished assets, so a colour edit shows exactly what it will
+   look like in both banner modes (see lib/templates/banner.ts).
+   The card is NOT stretched to fill the grid: the iframe inside renders a
+   fixed-pixel document (the same fixed canvas real asset generation needs),
+   so stretching the card would stretch the iframe's box past that canvas —
+   the content stays pinned at its true size while the root background bleeds
+   across the leftover space. Sizing the card to its content avoids that. */
+.color-preview-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.color-preview-card {
+  display: inline-block;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--paper-alt);
+}
+
+.color-preview-label {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.color-preview-card iframe {
+  display: block;
+  border: 0;
 }
 
 .images {
@@ -537,9 +913,9 @@ button.tiny {
   position: relative;
 }
 
-/* Latauslaatta osana kuvaruudukkoa: "lisää kuvia" on siellä missä kuvatkin,
-   ei sivun oikeassa reunassa mistä sen huomaa huonosti. Katkoviiva ja plus
-   ovat vakiintunut "lisää"-affordanssi. */
+/* The upload tile lives inside the image grid: "add images" sits where the
+   images are, not off at the right edge where it is easy to miss. A dashed
+   border and a plus are the settled affordance for "add". */
 .uploadtile {
   display: flex;
   flex-direction: column;
@@ -610,8 +986,8 @@ button.tiny {
   line-height: 1;
 }
 
-/* Tiedostonvalinta näyttää painikkeelta: <input type="file"> ei ole
-   tyylitettävissä, joten se piilotetaan labelin sisään. */
+/* The file picker looks like a button: <input type="file"> cannot be styled,
+   so it is hidden inside the label. */
 .uploadbtn {
   display: inline-flex;
   align-items: center;
@@ -697,7 +1073,7 @@ button.tiny {
   color: var(--text-muted);
 }
 
-/* ---------------------------------------------- aineistot */
+/* --------------------------------------------------- assets */
 .assets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -714,8 +1090,8 @@ button.tiny {
   flex-direction: column;
 }
 
-/* Vaalea shakkiruudutus: näyttää mainoksen reunat ja mahdollisen
-   läpinäkyvyyden ilman että se kilpailee sisällön kanssa. */
+/* A light chequerboard: shows the ad's edges and any transparency without
+   competing with the content. */
 .asset .preview {
   background-color: var(--paper-alt);
   background-image: linear-gradient(45deg, #e9dfe6 25%, transparent 25%),
@@ -748,7 +1124,7 @@ button.tiny {
   margin: 0 0 var(--space-1);
   font-size: var(--text-small);
   font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-finnish);
+  letter-spacing: var(--tracking-tight);
   color: var(--text-strong);
   display: flex;
   align-items: center;
@@ -841,7 +1217,7 @@ button.tiny {
   color: var(--ink);
 }
 
-/* Kehittäjäohje erottuu käyttäjälle suunnatusta viestistä. */
+/* A developer note reads apart from a message aimed at the user. */
 .devhint {
   display: block;
   margin-top: var(--space-2);
@@ -874,8 +1250,8 @@ button.tiny {
   margin-top: var(--space-3);
 }
 
-/* "Seuraava askel" on oma osionsa, ei jatketta aineistoille — selvä
-   pystyväli erottaa sen edellä olevasta aineistoruudukosta. */
+/* "Next step" is its own section, not a continuation of the assets — clear
+   vertical space separates it from the asset grid above. */
 .handoff {
   border-color: var(--green);
   margin-top: var(--space-6);

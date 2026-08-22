@@ -1,0 +1,132 @@
+{
+  "note": "Display formats offered in onboarding, taken from Alma's display format table (Standard / Taktiset / Erikoisratkaisut) at almamedia.fi/mainostajat/aineisto-ohjeet/. priceEur is a placeholder — CPC for cpc formats, CPM for cpm formats — pending AMS Ad Ops pricing (Open Question 2). specFormatId links to lib/specs/display.json so the asset studio knows what to render; null means the studio cannot produce that size yet.",
+  "provisional": true,
+  "owner": "AMS Ad Ops / adtech",
+  "specsUrl": "https://www.almamedia.fi/mainostajat/aineisto-ohjeet/",
+  "requirements": [
+    "Performance Display ads must show the advertiser's name and logo clearly",
+    "The entire ad must be clickable — no dead zones",
+    "Light animation is allowed, but the ad must stay click-oriented",
+    "No audio or video in Performance Display formats",
+    "All assets must be served over HTTPS"
+  ],
+  "formats": [
+    {
+      "id": "paraati",
+      "smeName": "Wide banner",
+      "internalName": "Paraati",
+      "dimensions": "980 × 400 px desktop, 300 × 300 px mobile, 600 × 600 px crossdevice",
+      "devices": "Desktop, mobile and crossdevice",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Brand awareness and high visibility at the top of the page",
+      "maxFileSizeKb": 300,
+      "priceEur": 12,
+      "specFormatId": "paraati"
+    },
+    {
+      "id": "digikokosivu",
+      "smeName": "Full-page banner",
+      "internalName": "Digikokosivu",
+      "dimensions": "620 × 891 px desktop, 300 × 600 px mobile",
+      "devices": "Desktop and mobile",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Owning the page when you have a lot to say",
+      "maxFileSizeKb": 300,
+      "priceEur": 15,
+      "specFormatId": "digikokosivu"
+    },
+    {
+      "id": "boksit",
+      "smeName": "Box banner",
+      "internalName": "Boksit",
+      "dimensions": "300 × 250 px mobile, 600 × 500 px crossdevice",
+      "devices": "Mobile and crossdevice",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "A versatile size that works across every channel",
+      "maxFileSizeKb": 300,
+      "priceEur": 9,
+      "specFormatId": "boksit-crossdevice"
+    },
+    {
+      "id": "suurtaulu",
+      "smeName": "Tall banner",
+      "internalName": "Suurtaulu",
+      "dimensions": "300 × 600 px desktop",
+      "devices": "Desktop",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Storytelling and a strong brand presence beside the article",
+      "maxFileSizeKb": 300,
+      "priceEur": 10,
+      "specFormatId": "suurtaulu"
+    },
+    {
+      "id": "boksi",
+      "smeName": "Small square banner",
+      "internalName": "Boksi",
+      "dimensions": "300 × 300 px desktop",
+      "devices": "Desktop",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Steady, low-cost presence alongside the content",
+      "maxFileSizeKb": 300,
+      "priceEur": 7,
+      "specFormatId": "boksi"
+    },
+    {
+      "id": "ylapaikka",
+      "smeName": "Inline banner",
+      "internalName": "Yläpaikka",
+      "dimensions": "980 × 120 px desktop",
+      "devices": "Desktop",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Awareness and repeat exposure at a lower cost per view",
+      "maxFileSizeKb": 300,
+      "priceEur": 6,
+      "specFormatId": "ylapaikka"
+    },
+    {
+      "id": "erikoisratkaisut",
+      "smeName": "High-impact takeover",
+      "internalName": "Erikoisratkaisut",
+      "dimensions": "980 × 552 px, or Paraati + tapetti at 1600 × 1150 px",
+      "devices": "Desktop",
+      "pricingModel": "cpm",
+      "pricingCopy": "You pay per 1,000 times your ad is seen",
+      "bestFor": "Launches and campaigns that need to dominate the page",
+      "maxFileSizeKb": 400,
+      "priceEur": 22,
+      "specFormatId": "megaparaati"
+    },
+    {
+      "id": "performance-display",
+      "smeName": "Pay-per-click banner",
+      "internalName": "Performance Display",
+      "dimensions": "600 × 600 px",
+      "devices": "Desktop and mobile",
+      "pricingModel": "cpc",
+      "pricingCopy": "You pay when someone clicks",
+      "bestFor": "Driving traffic and conversions — you only pay for clicks",
+      "maxFileSizeKb": 300,
+      "priceEur": 0.6,
+      "specFormatId": "paraati-crossdevice"
+    },
+    {
+      "id": "performance-display-business",
+      "smeName": "Pay-per-click banner (business)",
+      "internalName": "Performance Display Business",
+      "dimensions": "600 × 600 px",
+      "devices": "Desktop and mobile",
+      "pricingModel": "cpc",
+      "pricingCopy": "You pay when someone clicks",
+      "bestFor": "Reaching business audiences across the Kauppalehti network",
+      "maxFileSizeKb": 300,
+      "priceEur": 0.9,
+      "specFormatId": "paraati-crossdevice"
+    }
+  ]
+}

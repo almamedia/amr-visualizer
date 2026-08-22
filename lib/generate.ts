@@ -25,33 +25,50 @@ import type {
 const KB = 1024;
 const RENDER_CONCURRENCY = 3;
 const MAX_LOGO_BYTES = 80 * KB;
-/** Alle tämän logo hukkuu taustaan eikä sitä kannata käyttää. */
+/** Below this the logo disappears into the ground and is not worth using. */
 const MIN_LOGO_CONTRAST = 1.6;
 
-/** HTML5-paketissa kuva jakaa painobudjetin merkkauksen kanssa. */
+/** In an HTML5 package the image shares its weight budget with the markup. */
 const IMAGE_BUDGET_RATIO = 0.5;
+
+/**
+ * Alma's flagship desktop size, 980 x 400. Every run renders it whether or not
+ * the recommendation asked for it: it is the size the campaign is shown in, so
+ * a set without one has nothing to put on a page. It is added quietly rather
+ * than offered as a choice — the recommendation stays about what suits the
+ * advertiser, and this is a production floor underneath it.
+ */
+const ALWAYS_RENDER_FORMAT_ID = "paraati";
 
 export interface GenerateOptions {
   brand: BrandCard;
   goalId: GoalId;
-  /** Oletuksena speksikirjaston ensisijaiset formaatit. */
+  /** Defaults to the primary formats in the spec library. */
   formatIds?: string[];
-  /** Oletuksena ensimmäinen HTML5-formaatti. */
+  /** Defaults to the first HTML5 format. */
   html5FormatId?: string;
-  /** Käyttäjän muokkaamat tekstit. Kun nämä annetaan, Claudea ei kutsuta —
-   *  aineistot renderöidään suoraan annetuilla teksteillä. */
+  /** Copy the user has edited. When given, Claude is not called — the assets
+   *  are rendered straight from this text. */
   copyVariants?: CopyVariant[];
+  /**
+   * Landing page for the HTML5 assets. Defaults to the site the brand was read
+   * from. Static assets do not need it — the adserver makes those clickable —
+   * but an HTML5 tag carries its own link or the ad is dead on arrival.
+   */
+  clickUrl?: string;
+  /** Adserver click macro placed before the landing page, e.g. "${CLICK_URL}". */
+  clickMacro?: string;
 }
 
 export interface GenerateResult {
   assets: GeneratedAsset[];
   copyVariants: CopyVariant[];
-  /** Tiukimmat merkkirajat, joita UI näyttää muokkauskentissä. */
+  /** The tightest character limits, shown by the UI in its edit fields. */
   limits: TextLimits;
   warnings: string[];
 }
 
-/** Tiukimmat merkkirajat valituista formaateista — copy mahtuu näin joka kokoon. */
+/** The tightest limits across the chosen formats — so the copy fits every size. */
 function tightestLimits(formatIds: string[]): TextLimits {
   return formatIds
     .map((id) => getFormat(id).textLimits)
@@ -66,10 +83,12 @@ export async function generateAssets(
   opts: GenerateOptions
 ): Promise<GenerateResult> {
   const warnings: string[] = [];
-  const formatIds =
-    opts.formatIds?.length
-      ? opts.formatIds
-      : specs.formats.filter((f) => f.primary).map((f) => f.id);
+  const requestedIds = opts.formatIds?.length
+    ? opts.formatIds
+    : specs.formats.filter((f) => f.primary).map((f) => f.id);
+  const formatIds = requestedIds.includes(ALWAYS_RENDER_FORMAT_ID)
+    ? requestedIds
+    : [ALWAYS_RENDER_FORMAT_ID, ...requestedIds];
   const html5FormatId = opts.html5FormatId ?? specs.html5Formats[0].id;
 
   const limits = tightestLimits(formatIds);
@@ -77,7 +96,7 @@ export async function generateAssets(
     ? opts.copyVariants.map((v, i) => ({ ...v, id: `v${i + 1}` }))
     : await generateCopy(opts.brand, opts.goalId, limits);
 
-  // Logo ja pääkuva ladataan kerran ja jaetaan kaikille aineistoille.
+  // The logo and the main image are fetched once and shared by every asset.
   const activeImage = opts.brand.images.find((i) => i.enabled) ?? null;
 
   const [logoRaw, imageRaw] = await Promise.all([
@@ -89,17 +108,17 @@ export async function generateAssets(
   if (logoRaw && approxBytes(logoRaw) > MAX_LOGO_BYTES) {
     logoDataUri = null;
     warnings.push(
-      "Logo oli liian raskas painorajaan — aineistoissa käytetään yrityksen nimeä tekstinä."
+      "The logo was too heavy for the weight limit — the assets use the company name as text instead."
     );
   }
   if (opts.brand.logoUrl && !logoRaw) {
-    warnings.push("Logon lataus epäonnistui — käytetään yrityksen nimeä tekstinä.");
+    warnings.push("The logo could not be fetched — using the company name as text instead.");
   }
 
-  // Logo voi latautua moitteettomasti ja silti kadota taustaan (negaversio
-  // vaalealla pohjalla). Mitataan pikselit ja pudotetaan logo, jos se ei erotu.
-  // Vertailu tehdään bannerin todellista pohjaa vasten: värillisessä moodissa
-  // pohja on brändiväri, ei brändikortin taustaväri.
+  // A logo can load perfectly and still vanish into the ground (a reversed-out
+  // version on a light background). Measure the pixels and drop the logo if it
+  // does not separate. The comparison is against the banner's real ground: in
+  // colour mode that is the brand colour, not the brand card's background.
   const bannerColors = resolveBannerColors(opts.brand, Boolean(imageRaw));
 
   if (logoDataUri) {
@@ -111,18 +130,18 @@ export async function generateAssets(
       if (contrast < MIN_LOGO_CONTRAST) {
         logoDataUri = null;
         warnings.push(
-          "Logo ei erotu taustasta (todennäköisesti negaversio) — aineistoissa käytetään yrityksen nimeä tekstinä. Voit vaihtaa taustavärin tai poistaa logon brändikortissa."
+          "The logo does not separate from the background (likely a reversed-out version) — the assets use the company name as text instead. You can change the background colour or remove the logo on the brand card."
         );
       }
     }
   }
   if (activeImage && !imageRaw) {
     warnings.push(
-      "Valitun kuvan lataus epäonnistui — aineistot rakennettiin ilman kuvaa."
+      "The selected image could not be fetched — the assets were built without it."
     );
   }
 
-  // Pakkaa kuva kertaalleen kutakin formaattia kohden (kokosuhde vaihtelee).
+  // Compress the image once per format, since the aspect ratio differs.
   const imagesByFormat = new Map<string, string | null>();
   if (imageRaw) {
     const compressed = await mapLimit(formatIds, RENDER_CONCURRENCY, async (id) => {
@@ -133,7 +152,7 @@ export async function generateAssets(
     for (const [id, uri] of compressed) imagesByFormat.set(id, uri);
   }
 
-  // Kaikki staattiset yhdistelmät: formaatti × copy-variaatio.
+  // Every static combination: format × copy variant.
   type Job = { formatId: string; variant: CopyVariant };
   const jobs: Job[] = [];
   for (const variant of copyVariants) {
@@ -144,8 +163,8 @@ export async function generateAssets(
     const fmt = getFormat(job.formatId);
     const copy = fitCopyToLimits(job.variant, fmt.textLimits);
     const fmtImage = imagesByFormat.get(job.formatId) ?? null;
-    // Värit ratkaistaan formaattikohtaisesti: jos kuva ei mahtunut tähän
-    // kokoon, banneri menee värilliseen moodiin ja kontrasti mitataan siitä.
+    // Colours are resolved per format: if the image did not fit this size,
+    // the banner falls into colour mode and contrast is measured from that.
     const formatColors = resolveBannerColors(opts.brand, Boolean(fmtImage));
     const html = renderBannerHtml({
       width: fmt.width,
@@ -196,7 +215,7 @@ export async function generateAssets(
     return asset;
   });
 
-  // HTML5-animaatio kustakin copy-variaatiosta.
+  // One HTML5 animation per copy variant.
   const h5 = getHtml5Format(html5FormatId);
   const h5Base = getFormat(h5.baseFormat);
 
@@ -210,6 +229,8 @@ export async function generateAssets(
       imageDataUri: imagesByFormat.get(h5Base.id) ?? null,
       logoDataUri,
       animated: true,
+      clickUrl: opts.clickUrl ?? opts.brand.sourceUrl ?? null,
+      clickMacro: opts.clickMacro,
     });
     const bytes = Buffer.byteLength(html, "utf8");
 
@@ -244,7 +265,7 @@ export async function generateAssets(
   const failed = assets.filter((a) => !a.validation.pass);
   if (failed.length) {
     warnings.push(
-      `${failed.length} aineistoa ei läpäissyt validointia. Katso punaiset kohdat aineistokorteista.`
+      `${failed.length} assets did not pass validation. See the flagged checks on the asset cards.`
     );
   }
 
@@ -266,14 +287,17 @@ function approxBytes(dataUri: string): number {
   return Math.floor((b64.length * 3) / 4);
 }
 
+/** Filename-safe slug. Nordic vowels are transliterated rather than stripped:
+ *  the company names this runs on are largely Finnish, and dropping the vowel
+ *  turns "Hämeen" into "Hmeen". */
 export function slug(s: string): string {
   return (
-    (s || "aineisto")
+    (s || "asset")
       .toLowerCase()
       .replace(/[äå]/g, "a")
       .replace(/ö/g, "o")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 40) || "aineisto"
+      .slice(0, 40) || "asset"
   );
 }

@@ -1,9 +1,9 @@
 import type { Browser } from "playwright";
 
 /**
- * Yksi jaettu selain koko prosessille. Playwrightin käynnistys on hidas
- * (~1 s), joten sitä ei tehdä per aineisto. Dev-moden hot reload säilyttää
- * instanssin globalThisin kautta.
+ * One shared browser for the whole process. Launching Playwright is slow
+ * (~1 s), so it does not happen per asset. Hot reload in dev keeps the
+ * instance alive through globalThis.
  */
 const g = globalThis as unknown as { __amrBrowser?: Promise<Browser> };
 
@@ -19,7 +19,7 @@ async function getBrowser(): Promise<Browser> {
     const b = await g.__amrBrowser;
     if (b.isConnected()) return b;
   } catch {
-    // Käynnistys epäonnistui — yritä uudelleen puhtaalta pöydältä.
+    // The launch failed — try again from a clean slate.
   }
   g.__amrBrowser = undefined;
   return getBrowser();
@@ -35,8 +35,8 @@ export interface RenderResult {
 }
 
 /**
- * Renderöi HTML kuvaksi. Kokeilee ensin PNG:tä (terävä, tasaiset värit);
- * jos se ylittää painorajan, siirtyy JPEGiin ja laskee laatua kunnes mahtuu.
+ * Render HTML to an image. Tries PNG first (sharp, flat colour); if that
+ * exceeds the weight limit it moves to JPEG and lowers quality until it fits.
  */
 export async function renderToImage(
   html: string,
@@ -48,13 +48,13 @@ export async function renderToImage(
   const context = await browser.newContext({
     viewport: { width, height },
     deviceScaleFactor: 1,
-    reducedMotion: "reduce", // pysäyttää CSS-animaatiot loppuasentoon
+    reducedMotion: "reduce", // freezes CSS animations at their end state
   });
   const page = await context.newPage();
 
   try {
     await page.setContent(html, { waitUntil: "load", timeout: 15000 });
-    // Varmista että fontit ovat valmiina ennen kuvakaappausta.
+    // Make sure the fonts are ready before the screenshot.
     await page.evaluate(() => (document as any).fonts?.ready);
 
     const png = (await page.screenshot({ type: "png" })) as Buffer;
@@ -93,9 +93,9 @@ export async function renderToImage(
 }
 
 /**
- * Pakkaa kuvan bannerin kokoon ja painobudjettiin. Ilman tätä sivulta poimittu
- * valokuva voi yksin ylittää 300 kt:n rajan HTML5-paketissa.
- * Käyttää Playwrightia, jotta natiivia kuvakirjastoa ei tarvita.
+ * Compress an image to the banner's size and weight budget. Without this a
+ * photo lifted off a website can blow the 300 kB limit of an HTML5 package on
+ * its own. Uses Playwright so no native image library is needed.
  */
 export async function compressImage(
   dataUri: string,
@@ -129,7 +129,7 @@ export async function compressImage(
         return `data:image/jpeg;base64,${buf.toString("base64")}`;
       }
     }
-    // Ei mahtunut budjettiin — parempi jättää kuva pois kuin rikkoa painoraja.
+    // It did not fit the budget — better to drop the image than break the limit.
     return last && last.byteLength <= maxBytes * 1.35
       ? `data:image/jpeg;base64,${last.toString("base64")}`
       : null;
@@ -141,11 +141,11 @@ export async function compressImage(
 }
 
 /**
- * Mittaa logon keskimääräisen vaaleuden läpinäkymättömistä pikseleistä.
- * Sivustoilla on usein negaversio logosta (alma-logo-white.png), joka latautuu
- * moitteettomasti mutta katoaa vaalealle pohjalle. Pelkkä latauksen
- * onnistuminen ei siis riitä tarkistukseksi — pitää katsoa itse pikselit.
- * Palauttaa null, jos kuvaa ei voi analysoida.
+ * Measure a logo's average lightness across its opaque pixels.
+ * Sites often carry a reversed-out logo (alma-logo-white.png) that loads
+ * perfectly and then disappears on a light ground. A successful fetch is
+ * therefore not a sufficient check — the pixels have to be looked at.
+ * Returns null when the image cannot be analysed.
  */
 export async function measureLuminance(
   dataUri: string
@@ -184,7 +184,7 @@ export async function measureLuminance(
       let weight = 0;
       for (let i = 0; i < data.length; i += 4) {
         const alpha = data[i + 3] / 255;
-        if (alpha < 0.15) continue; // läpinäkyvä tausta ei kerro logon väristä
+        if (alpha < 0.15) continue; // a transparent ground says nothing about the logo
         const lin = (c: number) => {
           const s = c / 255;
           return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
@@ -209,7 +209,7 @@ export async function closeBrowser(): Promise<void> {
     const b = await g.__amrBrowser;
     await b.close();
   } catch {
-    // ei väliä
+    // does not matter
   }
   g.__amrBrowser = undefined;
 }

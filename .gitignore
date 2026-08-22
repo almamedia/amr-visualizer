@@ -1,10 +1,12 @@
 node_modules/
-.next/
-out/
+build/
+.react-router/
 .env.local
 .env*.local
 *.tsbuildinfo
-next-env.d.ts
 .DS_Store
 /tmp-assets/
 .claude/
+
+# Alma's private cohort taxonomy — never committed. See cohorts.example.json.
+lib/onboarding/data/cohorts.json

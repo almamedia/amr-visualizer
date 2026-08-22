@@ -10,13 +10,26 @@ export interface BannerInput {
   imageDataUri: string | null;
   /** Logo data-URI:na tai null. */
   logoDataUri: string | null;
-  /** Lisää CSS-animaatiot (HTML5-versio). */
+  /** Add the CSS animations (the HTML5 version). */
   animated: boolean;
+  /**
+   * Where the ad clicks through to. Null renders no link, which is right for
+   * the static path: those are screenshotted and the adserver supplies the
+   * click itself. An HTML5 tag has to carry its own click-through, because
+   * nothing wraps it — without this the ad renders and does nothing.
+   */
+  clickUrl?: string | null;
+  /**
+   * Prefix the adserver swaps for its click tracker, e.g. "${CLICK_URL}" on
+   * Xandr. Placed before the landing page so the click is counted before the
+   * redirect. Omitted for previews, where the macro would be dead text.
+   */
+  clickMacro?: string;
 }
 
-type Layout = "wide" | "square" | "tall";
+type Layout = "strip" | "wide" | "square" | "tall";
 
-/** Fonttinimien mappaus järjestelmäfontteihin — ei ulkoisia fonttilatauksia,
+/** Map font names onto system fonts — no external font loads,
  *  koska Alma laskee ulkoiset fontit tiedostokokorajaan. */
 function fontStack(name: string): string {
   const n = (name || "").toLowerCase();
@@ -37,6 +50,11 @@ function fontStack(name: string): string {
 
 function pickLayout(w: number, h: number): Layout {
   const r = w / h;
+  // Yläpaikka is 980 x 120: a letterbox the wide layout cannot hold. Stacked
+  // logo, headline, body and CTA need roughly 260 px of height, so at 120 the
+  // top and bottom are simply cut off. A strip lays the same elements out in
+  // one row and drops the body line, which is the only thing that fits.
+  if (h <= 200 && r >= 3.5) return "strip";
   if (r >= 1.6) return "wide";
   if (r >= 0.85) return "square";
   return "tall";
@@ -77,11 +95,11 @@ const INK = "#141821";
 const PAPER = "#ffffff";
 
 /**
- * Valitse luettava tekstiväri taustaa vasten. Kiinteä luminanssikynnys ei
- * riitä: keskisävyinen väri kuten kulta (luminanssi ~0,35) jäi kynnyksen
- * alle ja sai valkoisen tekstin, jonka kontrasti on vain 2,6:1 — tumma
- * teksti samalla pohjalla on 6,6:1. Verrataan siis kontrastit ja valitaan
- * parempi sen sijaan että arvattaisiin kynnyksellä.
+ * Pick a readable text colour against a ground. A fixed luminance threshold is
+ * not enough: a mid-tone colour such as gold (luminance ~0.35) fell on the
+ * dark side of the threshold and took white text at a contrast of just 2.6:1
+ * — dark text on the same ground is 6.6:1. So compare both ratios and take the
+ * better one rather than guessing with a threshold.
  */
 function readableOn(bg: string): string {
   return contrastRatio(PAPER, bg) >= contrastRatio(INK, bg) ? PAPER : INK;
@@ -106,15 +124,15 @@ export interface BannerColors {
 }
 
 /**
- * Ratkaisee bannerin värit. Sama funktio ajetaan sekä renderöinnissä että
- * validoinnissa, jotta kontrastitarkistus mittaa juuri niitä värejä, jotka
- * aineistoon päätyvät.
+ * Resolve the banner's colours. The same function runs during rendering and
+ * during validation, so the contrast check measures exactly the colours that
+ * end up in the asset.
  *
- * Moodit tulevat AMR Design Systemistä:
- * - Editorial Light: vaalea pohja, kuva kantaa ilmeen.
- * - Bold: täyskylläinen brändiväri pohjana. Ilman kuvaa tämä on selvästi
- *   parempi — valkoinen banneri katoaa julkaisijan valkoiselle sivulle,
- *   ja tyhjä pinta näyttää keskeneräiseltä.
+ * The modes come from the AMR Design System:
+ * - Editorial Light: a light ground, with the image carrying the look.
+ * - Bold: a fully saturated brand colour as the ground. With no image this is
+ *   clearly the better one — a white banner vanishes into the publisher's white
+ *   page, and an empty surface looks unfinished.
  */
 export function resolveBannerColors(
   brand: BrandCard,
@@ -140,9 +158,9 @@ export function resolveBannerColors(
     };
   }
 
-  // Värillinen pohja: riittävän kylläinen ja tarpeeksi tumma, jotta
-  // tekstille löytyy luettava vastaväri. Lähes valkoinen "brändiväri" on
-  // yleensä poimintavirhe, eikä siitä saa pohjaa.
+  // A coloured ground has to be saturated enough and dark enough for a
+  // readable counter-colour to exist. A near-white "brand colour" is usually
+  // a picking error, and makes no ground at all.
   const ground =
     [primary, secondary, accent, brandText].find(
       (c) => saturation(c) > 0.18 && luminance(c) > 0.015 && luminance(c) < 0.7
@@ -152,8 +170,8 @@ export function resolveBannerColors(
 
   const text = readableOn(ground);
 
-  // CTA erottuu pohjasta. Korostusväri kelpaa, jos se irtoaa pohjasta ja
-  // kantaa itse luettavan tekstin; muuten käytetään vastapoolia.
+  // The CTA separates from the ground. The accent works if it lifts off the
+  // ground and carries readable text itself; otherwise use the opposite pole.
   const accentWorks =
     contrastRatio(accent, ground) >= 2.2 &&
     contrastRatio(readableOn(accent), accent) >= 4.5;
@@ -186,32 +204,64 @@ export function renderBannerHtml(input: BannerInput): string {
   const { width: w, height: h, brand, copy, imageDataUri, logoDataUri } = input;
   const layout = pickLayout(w, h);
 
-  const ref = layout === "wide" ? 980 : layout === "square" ? 600 : 300;
+  const strip = layout === "strip";
+  const ref = layout === "square" ? 600 : layout === "tall" ? 300 : 980;
   const scale = w / ref;
 
-  const pad = Math.round(Math.max(14, Math.min(w, h) * 0.065));
+  // A strip is bounded by its height, not its width: everything sits on one
+  // line, so the line's height is what every size has to be derived from.
+  const pad = strip
+    ? Math.round(h * 0.13)
+    : Math.round(Math.max(14, Math.min(w, h) * 0.065));
   const size = (base: number) => Math.max(9, Math.round(base * scale));
 
   const hasImage = Boolean(imageDataUri);
 
-  // Ilman kuvaa teksti saa koko pinnan, joten se saa myös kasvaa. Muuten
-  // banneriin jää iso tyhjä alue ja viesti jää heiveröiseksi.
+  // The whole ad is one link, so there are no dead zones. Static renders pass
+  // no URL: they are screenshotted, and the adserver attaches the click to the
+  // hosted image. An HTML5 tag gets a real anchor, prefixed with the
+  // adserver's click macro so the click is tracked before the redirect.
+  const href = input.clickUrl
+    ? `${input.clickMacro ?? ""}${input.clickUrl}`
+    : null;
+  const adTag = href ? "a" : "div";
+  const adAttrs = href
+    ? ` href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer"`
+    : "";
+
+  // With no image the text gets the whole surface, so it may grow into it.
+  // Otherwise a large empty area is left and the message reads as thin.
   const fill = hasImage ? 1 : 1.24;
 
-  const headlineSize = Math.round(
-    (layout === "wide" ? size(40) : layout === "square" ? size(34) : size(26)) *
-      fill
-  );
+  const headlineSize = strip
+    ? Math.max(12, Math.round(h * 0.26))
+    : Math.round(
+        (layout === "wide"
+          ? size(40)
+          : layout === "square"
+            ? size(34)
+            : size(26)) * fill
+      );
   const bodySize = Math.round(
     (layout === "wide" ? size(17) : layout === "square" ? size(16) : size(14)) *
       (hasImage ? 1 : 1.12)
   );
-  const ctaSize = Math.round(
-    (layout === "wide" ? size(16) : layout === "square" ? size(15) : size(14)) *
-      (hasImage ? 1 : 1.08)
-  );
-  const logoH =
-    layout === "wide" ? size(34) : layout === "square" ? size(30) : size(24);
+  const ctaSize = strip
+    ? Math.max(9, Math.round(h * 0.14))
+    : Math.round(
+        (layout === "wide"
+          ? size(16)
+          : layout === "square"
+            ? size(15)
+            : size(14)) * (hasImage ? 1 : 1.08)
+      );
+  const logoH = strip
+    ? Math.max(12, Math.round(h * 0.3))
+    : layout === "wide"
+      ? size(34)
+      : layout === "square"
+        ? size(30)
+        : size(24);
 
   const colors = resolveBannerColors(brand, hasImage);
   const bg = colors.ground;
@@ -224,7 +274,7 @@ export function renderBannerHtml(input: BannerInput): string {
 
   // Kuvapinnan osuus layoutin mukaan.
   const mediaPct =
-    layout === "wide" ? 44 : layout === "square" ? 46 : 38;
+    strip ? 24 : layout === "wide" ? 44 : layout === "square" ? 46 : 38;
 
   const a = input.animated;
   const anim = (name: string, delay: number, dur = 0.6) =>
@@ -234,8 +284,8 @@ export function renderBannerHtml(input: BannerInput): string {
 
   const labelSize = Math.max(8, Math.round(9 * Math.max(1, scale * 0.8)));
 
-  // Merkintä voi osua valokuvan päälle, joten se saa oman taustalaatan
-  // mainoksen omasta taustavärista — luettava sekä kuvan että pohjan päällä.
+  // The label can land over a photo, so it gets its own backing tile in the
+  // ad's own background colour — readable over both the image and the ground.
   const aiLabelBg = rgba(bg, 0.88);
   const aiLabelText = rgba(text, 0.75);
 
@@ -246,7 +296,7 @@ export function renderBannerHtml(input: BannerInput): string {
   // Ilman kuvaa teksti saa koko pinnan.
   const contentFlex = hasImage ? `flex:0 0 ${100 - mediaPct}%;` : "flex:1 1 100%;";
 
-  const flexDir = layout === "wide" ? "row" : "column";
+  const flexDir = layout === "wide" || strip ? "row" : "column";
 
   return `<!doctype html>
 <html lang="fi">
@@ -267,11 +317,15 @@ export function renderBannerHtml(input: BannerInput): string {
     display:flex;flex-direction:${flexDir};
     cursor:pointer;
     overflow:hidden;
+    /* The whole surface is the link — Alma requires no dead zones — so the
+       anchor must not colour or underline the text it wraps. */
+    text-decoration:none;
+    color:inherit;
   }
   .media{
     flex:0 0 ${mediaPct}%;
     position:relative;overflow:hidden;
-    ${layout === "wide" ? "order:2;" : "order:1;"}
+    ${layout === "wide" || strip ? "order:2;" : "order:1;"}
   }
   .img{
     position:absolute;inset:0;
@@ -279,15 +333,15 @@ export function renderBannerHtml(input: BannerInput): string {
     background-size:cover;background-position:center;
     ${a ? "animation:kenburns 9s ease-out both;" : ""}
   }
-  /* Terävä raja kuvan ja tekstipinnan välillä. Häivytystä kokeiltiin, mutta
-     poimittujen valokuvien tummat alueet muuttuivat sen läpi harmaaksi
-     suttaumaksi — selkeä jako on ennustettavampi mielivaltaisilla kuvilla.
-     Signature-väripalkkia ei piirretä värilliselle pohjalle: design system
-     rajaa sen Mode A:han, eikä se erotu täyskylläiseltä pinnalta. */
+  /* A hard edge between the image and the text surface. A fade was tried, but
+     the dark areas of scraped photos turned to grey mush through it — a clean
+     split is more predictable across arbitrary images. The signature colour bar
+     is not drawn on a coloured ground: the design system restricts it to Mode A,
+     and it does not separate from a fully saturated surface. */
   .media::after{
     content:"";position:absolute;z-index:1;
     ${
-      layout === "wide"
+      layout === "wide" || strip
         ? `top:0;bottom:0;left:0;width:${Math.max(2, Math.round(3 * scale))}px;`
         : `left:0;right:0;bottom:0;height:${Math.max(2, Math.round(3 * scale))}px;`
     }
@@ -295,17 +349,19 @@ export function renderBannerHtml(input: BannerInput): string {
   }
   .content{
     ${contentFlex}
-    ${layout === "wide" ? "order:1;" : "order:2;"}
-    display:flex;flex-direction:column;
-    justify-content:center;
-    padding:${pad}px;
-    gap:${Math.round(pad * 0.42)}px;
+    ${layout === "wide" || strip ? "order:1;" : "order:2;"}
+    display:flex;flex-direction:${strip ? "row" : "column"};
+    ${strip ? "align-items:center;" : ""}
+    justify-content:${strip ? "flex-start" : "center"};
+    padding:${strip ? `0 ${pad}px` : `${pad}px`};
+    gap:${Math.round(strip ? pad * 0.9 : pad * 0.42)}px;
     position:relative;z-index:2;
     min-width:0;
     overflow:hidden;
   }
   .logo{
-    height:${logoH}px;width:auto;max-width:62%;
+    height:${logoH}px;width:auto;max-width:${strip ? "22%" : "62%"};
+    ${strip ? "flex:0 0 auto;" : ""}
     object-fit:contain;object-position:left center;
     ${anim("fadeUp", 0)}
   }
@@ -322,20 +378,23 @@ export function renderBannerHtml(input: BannerInput): string {
     line-height:1.1;
     letter-spacing:-.022em;
     font-weight:800;
-    /* Viimeinen suoja: jos yhdyssana ei mahdu pienimmälläkään koolla,
-       se katkeaa rivin sisällä eikä leikkaudu reunasta pois. */
+    /* Last resort: if a compound word will not fit even at the smallest size,
+       it breaks within the line rather than being clipped at the edge. */
     overflow-wrap:anywhere;
+    ${strip ? "flex:1 1 auto;min-width:0;overflow:hidden;" : ""}
     ${anim("fadeUp", 0.25)}
   }
   p.body{
+    ${strip ? "display:none;" : ""}
     font-size:${bodySize}px;
     line-height:1.4;
     opacity:.86;
     ${anim("fadeUp", 0.45)}
   }
   .cta{
-    align-self:flex-start;
-    margin-top:${Math.round(pad * 0.25)}px;
+    align-self:${strip ? "center" : "flex-start"};
+    ${strip ? "flex:0 0 auto;" : ""}
+    margin-top:${strip ? 0 : Math.round(pad * 0.25)}px;
     background:${ctaBg};
     color:${ctaText};
     font-size:${ctaSize}px;
@@ -346,7 +405,7 @@ export function renderBannerHtml(input: BannerInput): string {
     white-space:nowrap;
     ${anim("popIn", 0.68, 0.5)}
   }
-  /* AI Act -merkintä on luettava myös valokuvan päällä: oma taustalaatta. */
+  /* The AI Act label must read over a photo too: its own backing tile. */
   .aiact{
     position:absolute;
     right:${Math.round(pad * 0.42)}px;
@@ -380,7 +439,7 @@ export function renderBannerHtml(input: BannerInput): string {
 </style>
 </head>
 <body>
-  <div class="ad">
+  <${adTag} class="ad"${adAttrs}>
     ${mediaBlock}
     <div class="content">
       ${
@@ -399,14 +458,14 @@ export function renderBannerHtml(input: BannerInput): string {
         ? `<div class="aiact">${escapeHtml(aiActLabel)}</div>`
         : ""
     }
-  </div>
+  </${adTag}>
 <script>
-/* Sovita teksti laatikkoon. Merkkiraja on arvio: suomen yhdyssanat vaihtelevat
-   pituudeltaan rajusti, ja sama merkkimäärä taittuu eri tavalla eri kokoihin.
-   Siksi typografia joustaa sen sijaan että teksti katkaistaisiin kesken —
-   katkaisu pudottaisi kokonaisen sanan yhden merkin ylityksen takia.
-   Ajetaan synkronisesti ennen load-tapahtumaa, joten kuvakaappaus näkee
-   lopullisen asettelun. */
+/* Fit the text to its box. A character limit is only an estimate: word lengths
+   vary wildly, and the same character count wraps differently at different
+   sizes. So the typography gives rather than the text being cut — cutting would
+   drop a whole word over a single character of overflow.
+   This runs synchronously before the load event, so the screenshot sees the
+   final layout. */
 (function () {
   var box = document.querySelector('.content');
   var head = document.querySelector('h1');
@@ -428,8 +487,8 @@ export function renderBannerHtml(input: BannerInput): string {
     return total + Math.max(0, kids.length - 1) * gap;
   }
 
-  /* Yksittäinen pitkä yhdyssana voi olla leveämpi kuin koko banneri, jolloin
-     se leikkautuu reunasta vaikka korkeus riittäisi. Siksi mitataan
+  /* A single long compound word can be wider than the whole banner, clipping
+     at the edge even when the height is fine. So measure
      molemmat suunnat. */
   function tooWide(el) {
     return el.scrollWidth > el.clientWidth + 1;
@@ -449,8 +508,8 @@ export function renderBannerHtml(input: BannerInput): string {
     }
   }
 
-  /* Otsikko joustaa ensin — se vie eniten tilaa ja kestää kutistamisen
-     parhaiten. Leipäteksti vasta jos se ei riitä. */
+  /* The headline gives first — it takes the most room and survives shrinking
+     best. The body copy only if that is not enough. */
   shrink(head, 0.6, 12);
   var body = document.querySelector('p.body');
   if (body && overflows(body)) shrink(body, 0.78, 10);
@@ -460,5 +519,5 @@ export function renderBannerHtml(input: BannerInput): string {
 </html>`;
 }
 
-/** Animaation kokonaiskesto sekunteina — validointi vertaa tätä speksin rajaan. */
+/** Total animation length in seconds — validation compares this to the spec limit. */
 export const ANIMATION_DURATION_SECONDS = 9;

@@ -1,0 +1,449 @@
+/**
+ * Rule-based recommendation engine (PRD §8). Deliberately not ML: the same
+ * answers must always produce the same recommendation, and every rule here
+ * has to be explainable to an SME in one sentence.
+ *
+ * The AI layer only adds weight. It never removes a channel the user's own
+ * answers put on the table (PRD §8: "The AI layer never overrides a user's
+ * explicit answer").
+ */
+
+import {
+  cityFallbackShare,
+  getAudienceTypeOption,
+  getBudgetTier,
+  getChannel,
+  getDurationOption,
+  getFormatOption,
+  getGoalOption,
+  getRegions,
+  regionDisplayName,
+  regions,
+} from "./catalog";
+import type {
+  BusinessSignals,
+  DurationId,
+  FlowAnswers,
+  GoalId,
+  Recommendation,
+  RecommendedChannel,
+  RecommendedFormat,
+  ReachEstimate,
+} from "./types";
+
+/** Below this the analysis is discarded silently (PRD §7 step 1). */
+export const CONFIDENCE_FLOOR = 0.5;
+
+/** Reach is shown as a range, never a single number (PRD §8). */
+const RANGE_SPREAD = 0.2;
+
+/**
+ * Narrow targeting does not cut delivery in proportion to population — the
+ * budget is unchanged, the inventory is just scarcer and priced higher. This
+ * maps a region's audience share onto a delivery modifier that stays well
+ * above the raw share. Replace with real per-region factors from ad ops.
+ */
+function regionModifier(share: number): number {
+  if (share >= 1) return 1;
+  return 0.55 + 0.45 * share;
+}
+
+/**
+ * Paraati leads every recommendation, whatever the goal and whatever the
+ * budget. 980 x 400 is the size the campaign is actually shown in, so a plan
+ * without one is a plan with nothing to put on a page. lib/generate.ts renders
+ * it regardless; this makes the plan say so rather than quietly producing a
+ * size the advertiser was never shown.
+ */
+const LEAD_FORMAT_ID = "paraati";
+
+/**
+ * The second format, by goal. All CPM, like the lead: a line item carries one
+ * revenue type, so a plan that mixes a CPM format with a CPC one cannot be
+ * bought as a single buy.
+ */
+const COMPANION_BY_GOAL: Record<GoalId, string> = {
+  awareness: "suurtaulu",
+  conversion: "boksit",
+  local: "boksit",
+};
+
+/** Why the lead format suits this goal. */
+const LEAD_RATIONALE: Record<GoalId, string> = {
+  awareness:
+    "A large, visible placement at the top of the page builds recognition fast.",
+  conversion:
+    "The biggest surface on the page, so your offer is read before anyone scrolls past it.",
+  local:
+    "The size people notice first — the one that makes a local name familiar.",
+};
+
+/** Why the second format earns its place next to the lead. */
+const COMPANION_RATIONALE: Record<string, string> = {
+  suurtaulu:
+    "A tall placement beside the article stays on screen while people read.",
+  boksit:
+    "A compact size that follows people across mobile and desktop, for repeat exposure.",
+};
+
+/** When the user says "I'll decide later", the goal picks the duration. */
+const DURATION_BY_GOAL: Record<GoalId, DurationId> = {
+  awareness: "3-months",
+  conversion: "1-month",
+  local: "1-month",
+};
+
+export function resolvedDuration(answers: FlowAnswers): DurationId {
+  const chosen = answers.timeline.duration;
+  if (chosen !== "undecided") return chosen;
+  return answers.goal ? DURATION_BY_GOAL[answers.goal] : "1-month";
+}
+
+/** Monthly euros the maths runs on. Tier midpoint, or the custom number. */
+export function monthlyBudget(answers: FlowAnswers): number {
+  const tier = getBudgetTier(answers.budget.tier);
+  if (tier.id === "custom") {
+    const entered = answers.budget.customEur;
+    return entered && entered > 0 ? entered : fallbackMonthly();
+  }
+  return Math.round(((tier.minEur ?? 0) + (tier.maxEur ?? 0)) / 2);
+}
+
+function fallbackMonthly(): number {
+  const small = getBudgetTier("small");
+  return Math.round(((small.minEur ?? 0) + (small.maxEur ?? 0)) / 2);
+}
+
+/** How many channels this budget can carry without spreading too thin. */
+function channelBudgetCap(answers: FlowAnswers): number {
+  const medium = getBudgetTier("medium");
+  const mediumFloor = medium.minEur ?? 0;
+  if (answers.budget.tier === "small") return 1;
+  if (answers.budget.tier === "medium") return 2;
+  return monthlyBudget(answers) >= mediumFloor ? 2 : 1;
+}
+
+/** Usable signals, or null when analysis failed or scored too low. */
+export function usableSignals(
+  signals: BusinessSignals | null
+): BusinessSignals | null {
+  if (!signals) return null;
+  return signals.confidence >= CONFIDENCE_FLOOR ? signals : null;
+}
+
+/**
+ * The goal the website hints at, so step 3 can highlight it. Highlight only —
+ * never pre-selected, the user still chooses (PRD §7 step 2).
+ */
+export function suggestedGoal(signals: BusinessSignals | null): GoalId | null {
+  const s = usableSignals(signals);
+  if (!s) return null;
+  if (s.ecommerce || s.category === "ecommerce") return "conversion";
+  if (s.category === "b2b-professional") return "awareness";
+  if (s.geographicKind === "city") return "local";
+  return null;
+}
+
+/** The region the website hints at, so step 4 can pre-select it. */
+export function suggestedRegionId(
+  signals: BusinessSignals | null
+): string | null {
+  const s = usableSignals(signals);
+  if (!s?.geographicSignal || s.geographicKind !== "city") return null;
+  const needle = s.geographicSignal.toLowerCase();
+  return getRegionByHint(needle);
+}
+
+function getRegionByHint(needle: string): string | null {
+  let bestId: string | null = null;
+  let bestLen = 0;
+  for (const region of regions) {
+    const terms = [
+      region.name,
+      region.finnishName,
+      ...(region.aliases ?? []),
+    ];
+    for (const term of terms) {
+      const t = term.toLowerCase();
+      if (!t || !needle.includes(t)) continue;
+      if (t.length > bestLen) {
+        bestId = region.id;
+        bestLen = t.length;
+      }
+    }
+  }
+  return bestId;
+}
+
+// ------------------------------------------------------------- channels
+
+function channelWeights(
+  answers: FlowAnswers,
+  signals: BusinessSignals | null
+): Map<string, number> {
+  const weights = new Map<string, number>();
+  const add = (id: string, w: number) =>
+    weights.set(id, (weights.get(id) ?? 0) + w);
+
+  // 1. The user's own audience answers. Primary outranks secondary.
+  for (const typeId of answers.audience.types) {
+    const type = getAudienceTypeOption(typeId);
+    type.channelIds.forEach((id, i) => add(id, i === 0 ? 10 : 4));
+  }
+
+  // Nothing selected is a valid state — fall back to the broadest channel.
+  if (weights.size === 0) add("iltalehti", 10);
+
+  // 2. Goal modifier (PRD §8).
+  if (answers.goal === "conversion") add("iltalehti", 3);
+  if (answers.goal === "awareness") add("iltalehti", 1);
+
+  // 3. AI layer — additive only, so it can reorder but never eliminate.
+  const s = usableSignals(signals);
+  if (s) {
+    if (s.category === "real-estate") add("etuovi", 8);
+    if (s.category === "b2b-professional") add("kauppalehti", 6);
+    if (s.ecommerce) add("iltalehti", 3);
+    const hints = s.audienceSignals.join(" ").toLowerCase();
+    if (/famil|home|parent/.test(hints)) add("etuovi", 2);
+    if (/professional|business|manager/.test(hints)) add("kauppalehti", 2);
+  }
+
+  return weights;
+}
+
+function pickChannels(
+  answers: FlowAnswers,
+  signals: BusinessSignals | null
+): RecommendedChannel[] {
+  const weights = channelWeights(answers, signals);
+  const ranked = [...weights.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => getChannel(id));
+
+  const cap = channelBudgetCap(answers);
+  const picked = ranked.slice(0, Math.max(1, cap));
+
+  if (picked.length === 1) {
+    return [{ channel: picked[0], budgetShare: 1, role: "primary" }];
+  }
+  return [
+    { channel: picked[0], budgetShare: 0.6, role: "primary" },
+    { channel: picked[1], budgetShare: 0.4, role: "secondary" },
+  ];
+}
+
+// -------------------------------------------------------------- formats
+
+function pickFormats(answers: FlowAnswers): RecommendedFormat[] {
+  const goal = answers.goal ?? "awareness";
+
+  const formats: RecommendedFormat[] = [
+    { format: getFormatOption(LEAD_FORMAT_ID), rationale: LEAD_RATIONALE[goal] },
+  ];
+
+  // Budget modifier (PRD §7 6d): a small budget is not spread across two
+  // formats. It used to be swapped onto pay-per-click instead, which quietly
+  // replaced the goal's plan rather than trimming it — an awareness campaign on
+  // the starter tier came back recommending a click format and nothing else.
+  const smallBudget =
+    channelBudgetCap(answers) === 1 && answers.budget.tier !== "medium";
+  if (smallBudget) return formats;
+
+  const companionId = COMPANION_BY_GOAL[goal];
+  if (companionId && companionId !== LEAD_FORMAT_ID) {
+    formats.push({
+      format: getFormatOption(companionId),
+      rationale: COMPANION_RATIONALE[companionId] ?? LEAD_RATIONALE[goal],
+    });
+  }
+
+  return formats;
+}
+
+// ---------------------------------------------------------------- reach
+
+function estimateReach(
+  answers: FlowAnswers,
+  formats: RecommendedFormat[],
+  signals: BusinessSignals | null
+): ReachEstimate {
+  const budget = monthlyBudget(answers);
+  const lead = formats[0]?.format;
+  const unit: ReachEstimate["unit"] =
+    lead?.pricingModel === "cpc" ? "clicks" : "impressions";
+
+  // The estimate runs on the lead format's price. With two channels the split
+  // shifts this a little either way — acceptable while the output is a range,
+  // and worth revisiting once real per-channel prices land.
+  const base =
+    !lead || lead.priceEur <= 0
+      ? 0
+      : lead.pricingModel === "cpc"
+      ? budget / lead.priceEur
+      : (budget / lead.priceEur) * 1000;
+
+  // A business that operates nationally keeps the full estimate even if the
+  // user picked a region — the site says the reach is there (PRD §8).
+  const s = usableSignals(signals);
+  const national = s?.national ?? false;
+  const share = audienceShare(answers);
+  const capped = share < 1 && !national;
+  const modifier = capped ? regionModifier(share) : 1;
+
+  const mid = base * modifier;
+  const round = unit === "clicks" ? 10 : 1000;
+
+  return {
+    low: roundTo(mid * (1 - RANGE_SPREAD), round),
+    high: roundTo(mid * (1 + RANGE_SPREAD), round),
+    unit,
+    regionCapped: capped,
+  };
+}
+
+function audienceShare(answers: FlowAnswers): number {
+  const { geography, regionIds, cities } = answers.audience;
+  if (geography === "finland") return 1;
+  if (geography === "city") {
+    return Math.min(1, cityFallbackShare * Math.max(cities.length, 1));
+  }
+  const share = getRegions(regionIds).reduce((sum, r) => sum + r.audienceShare, 0);
+  return Math.min(1, share || 1);
+}
+
+function roundTo(value: number, step: number): number {
+  return Math.max(step, Math.round(value / step) * step);
+}
+
+function joinNames(names: string[]): string {
+  if (names.length === 0) return "";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+// -------------------------------------------------------------- summary
+
+export function targetPlace(answers: FlowAnswers): string {
+  const { geography, regionIds, cities } = answers.audience;
+  if (geography === "city") return joinNames(cities.map((c) => c.trim()).filter(Boolean)) || "your city";
+  if (geography === "region")
+    return joinNames(getRegions(regionIds).map(regionDisplayName)) || "your region";
+  return "Finland";
+}
+
+const GOAL_PHRASE: Record<GoalId, string> = {
+  awareness: "grow awareness for your business",
+  conversion: "turn interest into visits and sales",
+  local: "grow your local business",
+};
+
+function buildSummary(answers: FlowAnswers): string {
+  const goal = answers.goal ? GOAL_PHRASE[answers.goal] : "grow your business";
+  const place = targetPlace(answers);
+  // Cohort names are what the advertiser actually picked — more specific than
+  // the 5 generic buckets those cohorts collapse to for channel weighting, so
+  // the summary should say the real thing, not the bucket it maps to.
+  const types = answers.audience.cohorts.length
+    ? answers.audience.cohorts
+        .map((c) => c.cohort.path.split(">").pop() ?? c.cohort.path)
+        .join(", ")
+    : answers.audience.types
+        .map((t) => getAudienceTypeOption(t).label.toLowerCase())
+        .join(" and ");
+  const who = types ? `, targeting ${types}` : "";
+  const duration = getDurationOption(resolvedDuration(answers)).label.toLowerCase();
+  const tier = getBudgetTier(answers.budget.tier);
+  // The custom tier has no name that reads as a budget size, so it states the
+  // number instead: "a i have a specific budget budget" is not a sentence.
+  const money =
+    tier.id === "custom"
+      ? `a budget of ${budgetDisplay(answers)}`
+      : `a ${tier.name.toLowerCase()} budget`;
+  return `You want to ${goal} in ${place}${who}, over ${duration}, with ${money}.`;
+}
+
+function budgetDisplay(answers: FlowAnswers): string {
+  const tier = getBudgetTier(answers.budget.tier);
+  if (tier.id === "custom") {
+    return `${formatEur(monthlyBudget(answers))} / month`;
+  }
+  return `${formatEur(tier.minEur ?? 0)}–${formatEur(tier.maxEur ?? 0)} / month`;
+}
+
+export function formatEur(n: number): string {
+  return `${Math.round(n).toLocaleString("en-GB")} €`;
+}
+
+export function formatCount(n: number): string {
+  return Math.round(n).toLocaleString("en-GB");
+}
+
+// ------------------------------------------------------------------ main
+
+export function recommend(
+  answers: FlowAnswers,
+  signals: BusinessSignals | null
+): Recommendation {
+  const s = usableSignals(signals);
+  const channels = pickChannels(answers, s);
+  const formats = pickFormats(answers);
+  const reach = estimateReach(answers, formats, s);
+  const tier = getBudgetTier(answers.budget.tier);
+
+  const notes: string[] = [];
+
+  if (answers.goal === "local" || answers.audience.geography !== "finland") {
+    notes.push(
+      `Your ad will only be shown to people in ${targetPlace(
+        answers
+      )}, so none of your budget is spent outside your service area.`
+    );
+  }
+  if (answers.timeline.duration === "undecided") {
+    notes.push(
+      `You hadn't picked a length, so we planned for ${getDurationOption(
+        resolvedDuration(answers)
+      ).label.toLowerCase()} — the run that usually suits this goal.`
+    );
+  }
+  if (s?.category === "real-estate") {
+    notes.push(
+      "Your website looks property-related, so we gave Etuovi more weight — its readers are already in a moving mindset."
+    );
+  }
+  if (s?.category === "b2b-professional") {
+    notes.push(
+      "Your website reads as business-to-business, so we weighted Kauppalehti's professional audience more heavily."
+    );
+  }
+  if (s?.geographicKind === "global" && answers.audience.geography !== "finland") {
+    notes.push(
+      "Your website says you operate globally, so we haven't capped the estimate to one area."
+    );
+  } else if (s?.national && answers.audience.geography !== "finland") {
+    notes.push(
+      "Your website says you serve customers across Finland, so we haven't capped the estimate to one area."
+    );
+  }
+
+  return {
+    summary: buildSummary(answers),
+    channels,
+    formats,
+    reach,
+    budget: {
+      tier,
+      monthlyEur: monthlyBudget(answers),
+      display: budgetDisplay(answers),
+    },
+    notes,
+    usedAnalysis: Boolean(s),
+  };
+}
+
+/** Convenience for the summary card: the goal's own label. */
+export function goalLabel(id: GoalId | null): string {
+  return id ? getGoalOption(id)?.label ?? "" : "";
+}

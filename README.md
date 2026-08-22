@@ -1,235 +1,300 @@
-# AMR Aineistostudio
+# AMR Asset Studio
 
-Selainpohjainen työkalu, jossa pienyrittäjä syöttää verkkosivunsa osoitteen ja
-saa ulos valmiit, Alma Median aineisto-ohjeiden mukaiset mainosaineistot.
+A browser tool where a small business owner enters their website address and
+gets back finished display ads that meet Alma Media's spec requirements.
 
-**Putki:** URL sisään → brändikortti hyväksyttäväksi → aineistot ulos.
+**The pipeline:** URL in → brand card confirmed → assets out.
 
-## Käynnistys
+## Getting started
 
 ```bash
 npm install
 npx playwright install chromium
-cp .env.local.example .env.local   # lisää ANTHROPIC_API_KEY
+cp .env.local.example .env.local   # add ANTHROPIC_API_KEY
 npm run dev
 ```
 
-Sovellus käynnistyy osoitteeseen `http://localhost:3000`.
+The app starts at `http://localhost:5173`.
 
-### API-avain
+To run a production build:
 
-Sovellus **toimii ilman avainta**: brändikortti kootaan silloin suoraan sivun
-rakenteesta (og-tagit, CSS-muuttujat, logo-heuristiikat) ja tekstit
-valmiista pohjista. Koko putki, validointi ja zip-lataus toimivat.
+```bash
+npm run build
+npm start        # react-router-serve, port 3000 by default
+```
 
-Avain lisää laadun: Claude tunnistaa oikean brändivärin väriehdokkaista,
-valitsee mainoskäyttöön sopivat kuvat, tiivistää ydinviestin ja kirjoittaa
-copyt tavoitteen mukaan. Lisää se tiedostoon `.env.local`:
+### API key
+
+The app **works without a key**: the brand card is then assembled straight from
+the page structure (og tags, CSS variables, logo heuristics) and the copy comes
+from set templates. The whole pipeline, validation and zip download still work.
+
+The key raises the quality: Claude picks the real brand colour out of the
+candidates, chooses images that suit advertising, condenses the core message,
+and writes copy to match the goal. Add it to `.env.local`:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-6   # valinnainen, oletus
+ANTHROPIC_MODEL=claude-sonnet-4-6   # optional, the default
 ```
 
-Malli on vaihdettavissa. `claude-opus-5` tuottaa selvästi paremman copyn ja
-brändianalyysin, jos laatu on tärkeämpää kuin nopeus.
+The model is swappable. `claude-opus-5` produces clearly better copy and brand
+analysis if quality matters more than speed.
 
-## Arkkitehtuuri
+## Architecture
 
-Yksi Next.js-sovellus (App Router), ei erillistä backendia.
+One React Router 7 app (framework mode, Vite, SSR on), with no separate
+backend. The APIs are resource routes: route modules that export a
+`loader`/`action` and no default component.
 
 ```
 /app
-  /api/extract    scrape + brändianalyysi  → brändikortti-JSON
-  /api/generate   copy + template-render   → aineistot + validointi
-  /api/validate   yksittäisen aineiston spec-tarkistus (+ GET = speksit)
-  /api/zip        aineistot zip-paketiksi + LUEMINUT.txt
-  page.tsx        koko käyttöliittymä (syöttö → brändikortti → tulokset)
+  root.tsx        the HTML document, globals.css, Archivo from Google Fonts
+  routes.ts       the route table — paths are declared here, not in folder names
+  /routes
+    studio.tsx        "/"           the asset studio (input → brand → results)
+    onboarding.tsx    "/onboarding" self-serve path through to a plan
+    api.extract.ts    scrape + brand analysis   → brand card JSON
+    api.analyze.ts    scrape → brand card + business signals
+    api.generate.ts   copy + template render    → assets + validation
+    api.validate.ts   spec check for one asset (+ GET = the specs)
+    api.zip.ts        assets into a zip + README.txt
 /lib
-  /specs          AMR-tuotespeksit JSON:ina + lukurajapinta
-  /templates      HTML/CSS-bannertemplate, muuttujina brändi + copy
-  scrape.ts       fetch + cheerio, Playwright-fallback JS-raskaille sivuille
-  claude.ts       brändianalyysi + copy-generointi, mock-fallback ilman avainta
-  render.ts       Playwright → PNG/JPEG, jaettu selaininstanssi
-  validate.ts     puhdas Node-validointi speksejä vasten
-  generate.ts     orkestrointi: kuvat → copy → render → validointi
+  /specs          AMR product specs as JSON + a read interface
+  /templates      the HTML/CSS banner template, with brand + copy as variables
+  scrape.ts       fetch + cheerio, Playwright fallback for JS-heavy pages
+  claude.ts       brand analysis + copy generation, mock fallback without a key
+  render.ts       Playwright → PNG/JPEG, one shared browser instance
+  validate.ts     plain Node validation against the specs
+  generate.ts     orchestration: images → copy → render → validation
 ```
 
 ### Design system
 
-Käyttöliittymä noudattaa AMR Design Systemiä (claude.ai/design, projekti
-"AMR Design System"). Tokenit on kopioitu lähteestä tiedostoon
+The interface follows the AMR Design System (claude.ai/design, project "AMR
+Design System"). The tokens are copied from the source into
 [globals.css](app/globals.css):
 
-- **Värit** — violetti `#9F248F` ja vihreä `#28B78F` tasavertaisina
-  pääväreinä, oliivi `#C2C83D` vain pienenä korostuksena. Sävytetyt
-  neutraalit: paperi `#FAF6F8`, muste `#1C0A19`.
-- **Typografia** — Archivo, ladataan `next/font/google`-optimoinnilla.
-  Painoista käytössä 800 (otsikot, painikkeet, labelit) ja 400
-  (leipäteksti); design system sallii sommitelmaan enintään kaksi.
-- **Muodot** — 8 pikselin ruudukko, pillinmuotoiset painikkeet
-  (`radius: 999px`), korttien 16 px pyöristys, 7 px signature-väripalkki.
-- **Moodi** — A (Editorial Light). Työkalu on lomakepainotteinen, joten
-  vaalea paperipohja lukee paremmin kuin Mode B:n täyskylläinen violetti,
-  ja mainosten esikatselut istuvat neutraalille pohjalle luontevammin.
+- **Colour** — violet `#9F248F` and green `#28B78F` as equal primaries, olive
+  `#C2C83D` only as a small accent. Tinted neutrals: paper `#FAF6F8`, ink
+  `#1C0A19`.
+- **Typography** — Archivo, fetched from Google Fonts in the `links` export of
+  `app/root.tsx`. Two weights are in use: 800 (headings, buttons, labels) and
+  400 (body); the design system allows at most two per composition.
+- **Shape** — an 8-pixel grid, pill-shaped buttons (`radius: 999px`), 16 px
+  card corners, a 7 px signature colour bar.
+- **Mode** — A (Editorial Light). The tool is form-led, so a light paper ground
+  reads better than Mode B's fully saturated violet, and ad previews sit more
+  naturally on a neutral ground.
 
-Design systemissä ei ole tokenia virhevärille — paletti on violetti,
-vihreä ja oliivi. Validoinnin tilat on siksi ratkaistu paletin sisällä:
-**vihreä = hyväksytty**, **violetti = vaatii huomiota**. Oliivia ei
-käytetä tekstiin, koska design system kieltää sen kaikilla pohjilla.
+The design system has no token for an error colour — the palette is violet,
+green and olive. Validation states are therefore solved inside the palette:
+**green = passed**, **violet = needs attention**. Olive is never used for text,
+because the design system forbids it on every ground.
 
-**Mainosaineistoja design system ei koske.** Ne kantavat asiakkaan
-brändiä, eivät Alman: kampaamon banneri käyttää kampaamon värejä ja
-logoa. [banner.ts](lib/templates/banner.ts) on siksi jätetty ennalleen.
+**The design system does not govern the ads themselves.** They carry the
+customer's brand, not Alma's: a hair salon's banner uses the salon's colours and
+logo. [banner.ts](lib/templates/banner.ts) is left alone for that reason.
 
-### Speksikirjasto
+### Spec library
 
-`lib/specs/display.json` on **ainoa** paikka, jossa mitat, painorajat ja
-tekstirajat elävät. Kaikki generointi ja validointi lukee sitä; kovakoodattuja
-arvoja ei ole muualla.
+`lib/specs/display.json` is the **only** place dimensions, weight limits and
+character limits live. All generation and validation reads from it; there are no
+hard-coded values anywhere else.
 
-Mitat ja maksimipainot ovat Alman virallisia arvoja
-([aineisto-ohjeet](https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/),
-haettu 2026-08-11). **Tekstirajat ovat tämän työkalun omia**, luettavuuteen
-perustuvia rajoja — Alma määrittelee merkkirajat vain Performance Native
--formaatille.
+Dimensions and maximum weights are Alma's official figures
+([spec guidelines](https://www.almamedia.fi/mainostajat/aineisto-ohjeet/display-mainonnan-aineisto-ohjeet/),
+fetched 2026-08-11). **The character limits are this tool's own**, based on
+legibility — Alma specifies character limits only for Performance Native.
 
-Demossa käytössä olevat kolme ensisijaista kokoa (`"primary": true`):
+Format names are Alma's product names and are kept as they are: they are what a
+media buyer actually books.
 
-| Formaatti | Koko | Max |
+The three primary sizes in use (`"primary": true`):
+
+| Format | Size | Max |
 |---|---|---|
-| Paraati | 980×400 | 300 kt |
-| Pystyparaati | 300×600 | 300 kt |
-| Performance Display | 600×600 | 300 kt |
+| Paraati | 980×400 | 300 kB |
+| Pystyparaati | 300×600 | 300 kB |
+| Performance Display | 600×600 | 300 kB |
 
-Kirjastossa on lisäksi Mobiiliparaati, Boksi, Megaparaati ja Tapetti valmiina —
-uuden koon saa mukaan vaihtamalla `primary`-lipun päälle.
+The library also holds Mobiiliparaati, Boksi, Megaparaati and Tapetti ready to
+go — a new size joins the run by switching its `primary` flag on.
 
-### Bannerin kaksi moodia
+### The banner's two modes
 
-Moodit tulevat AMR Design Systemistä ja valitaan automaattisesti sen mukaan,
-onko käyttökelpoinen kuva olemassa:
+The modes come from the AMR Design System and are chosen automatically, based on
+whether a usable image exists:
 
-| Moodi | Milloin | Ilme |
+| Mode | When | Look |
 |---|---|---|
-| Editorial Light | Kuva löytyi | Vaalea pohja, kuva kantaa ilmeen |
-| Bold | Ei kuvaa | Brändiväri koko pohjana, vastavärinen teksti ja CTA |
+| Editorial Light | An image was found | Light ground, the image carries the look |
+| Bold | No image | Brand colour as the whole ground, counter-coloured text and CTA |
 
-Värillinen pohja ei ole makuasia: julkaisijan sivu on itsekin valkoinen, joten
-valkoinen banneri sulautuu siihen. Ilman kuvaa myös tyhjä pinta jäisi suureksi,
-joten typografia kasvaa samalla.
+A coloured ground is not a matter of taste: the publisher's page is white
+itself, so a white banner melts into it. With no image the empty surface would
+also be large, so the typography grows to fill it.
 
-Pohjaväri valitaan brändin väreistä ensimmäinen, joka on riittävän kylläinen
-ja tarpeeksi tumma kantamaan luettavaa tekstiä. Lähes valkoinen "brändiväri"
-on yleensä poimintavirhe, eikä siitä tehdä pohjaa.
+The ground colour is the first of the brand's colours that is saturated enough
+and dark enough to carry readable text. A near-white "brand colour" is usually a
+picking error, and is not made into a ground.
 
-### Copyn tarkistus
+### Checking the copy
 
-Tulosnäkymässä tekstit ovat muokattavissa, ja merkkilaskuri näyttää tiukimman
-koon rajan. Muokkaus renderöi aineistot uudelleen **ilman Claude-kutsua**, eli
-noin sekunnissa: [generate.ts](lib/generate.ts) käyttää annettuja tekstejä
-sellaisenaan, kun `copyVariants` tulee pyynnön mukana.
+On the results screen the copy is editable, and a counter shows the tightest
+size's limit. An edit re-renders the assets **without calling Claude**, so in
+about a second: [generate.ts](lib/generate.ts) uses the given text as-is when
+`copyVariants` arrives with the request.
 
-## Miten laatu varmistetaan
+### The language of the ads
 
-- **Painoraja**: render kokeilee ensin PNG:tä; jos se ylittää rajan, siirtyy
-  JPEGiin ja laskee laatua kunnes mahtuu. Lähdekuva pakataan erikseen
-  bannerin kokoon, jotta HTML5-paketti pysyy rajan alla.
-- **Merkkirajat**: copy generoidaan valittujen kokojen **tiukimpiin** rajoihin,
-  joten sama teksti mahtuu jokaiseen kokoon.
-- **Tekstin sovitus**: merkkiraja on arvio, koska sama merkkimäärä taittuu eri
-  tavalla eri kokoihin ja suomen yhdyssanat vaihtelevat pituudeltaan rajusti.
-  Siksi typografia joustaa: renderöinnissä otsikon kokoa pienennetään kunnes
-  teksti mahtuu laatikkoon sekä pysty- että vaakasuunnassa. Ilman tätä yhden
-  merkin ylitys pudotti kokonaisen sanan katkaisussa, ja yksi pitkä yhdyssana
-  saattoi leikkautua reunasta.
-- **AI Act -merkintä on pois päältä.** Linjaus on AMR:n: kuvia ei muokata vaan
-  ainoastaan rajataan, ja tekstit käyvät läpi ihmisen tarkistuksen ennen
-  latausta. Merkintä on toteutettu lippuna eikä poistettu koodista: kun
-  `requireAiActLabel` asetetaan takaisin arvoon `true` tiedostossa
-  [display.json](lib/specs/display.json), merkintä palaa sekä aineistoihin,
-  validointiin että zip-paketin LUEMINUT-tiedostoon.
+The interface, the code and the docs are English. The ads themselves follow one
+constant, `COPY_LANGUAGE` in [claude.ts](lib/claude.ts), which is currently also
+English.
 
-  Huomaa arviointia varten, että mainosten otsikot, leipätekstit ja CTA:t ovat
-  kokonaan mallin kirjoittamia — merkintävelvollisuus koskisi todennäköisimmin
-  juuri tekstiä, ei rajattuja kuvia.
-- **HTML5**: tiedostot ovat itsenäisiä (kuvat ja tyylit upotettuina), eivät
-  lataa mitään ulkopuolelta, eivät käytä jQueryä. Validointi tarkistaa nämä.
-- **Kuvavalinta**: kuvaehdokkaat lähetetään mallille kuvina, ei pelkkinä
-  URL-osoitteina, jotta se näkee mitä valitsee. Valmiit mainokset hylätään:
-  niissä on oma otsikko, oma CTA ja usein eri verkko-osoite, ja rajaus
-  katkaisee tekstin kesken. Ennen mallia ajetaan ilmainen suodatin, joka
-  pudottaa `/ad/`-polun ja tiedostonimet, joissa on banner, mainos tai promo.
-  Jos yksikään kuva ei kelpaa, mainos rakentuu typografialla — se on parempi
-  kuin väärä kuva.
-- **Kontrasti**: jokaisesta aineistosta mitataan tekstin kontrasti pohjaa
-  vasten (vaatimus 4,5:1) ja se, erottuuko CTA pohjasta ja kantaako se itse
-  luettavan tekstin. Värit ratkaistaan samalla funktiolla, jolla ne
-  renderöidään, joten tarkistus mittaa juuri sitä mikä aineistoon päätyy.
-- **Merkistö**: malli sekoittaa satunnaisesti kyrillisiä homoglyyfejä
-  latinalaisten sekaan (`lempipiццasi`). Ne näyttävät vilkaisulla oikealta,
-  mutta ovat rikkinäistä suomea. Generointi suodattaa tällaiset variaatiot ja
-  pyytää uudet; lisäksi jokainen aineisto saa erillisen merkistötarkistuksen,
-  joka tekee mahdollisen lipsahduksen näkyväksi.
-- **Logon näkyvyys**: sivustoilla on usein negaversio logosta
-  (`alma-logo-white.png`), joka latautuu moitteettomasti mutta katoaa vaalealle
-  pohjalle. Logon pikselit mitataan ja kontrasti lasketaan taustaväriä vasten;
-  jos logo ei erotu, tilalle tulee yrityksen nimi tekstinä ja käyttäjä saa
-  varoituksen. Pelkkä latauksen onnistuminen ei siis riitä tarkistukseksi.
+This is a product decision rather than a translation detail. The ads run in
+Alma's titles, which are read in Finnish, so English creative may well be the
+wrong output even though the tool around it is English. Changing that one
+constant puts the creative back into Finnish: the prompt follows it, and the
+mock copy fallback would need its templates swapped to match.
 
-## Käyttäjäpolku
+## How quality is assured
 
-Kolme vaihetta: syöttö → brändikortti → aineistot. Polussa pääsee liikkumaan
-molempiin suuntiin tietoja menettämättä:
+- **Weight limit**: the renderer tries PNG first; if that goes over, it moves to
+  JPEG and lowers quality until it fits. The source image is compressed
+  separately to the banner's size, so the HTML5 package stays under the limit.
+- **Character limits**: copy is generated to the **tightest** limits across the
+  chosen sizes, so the same text fits every one of them.
+- **Text fitting**: a character limit is only an estimate, because the same
+  character count wraps differently at different sizes and word lengths vary
+  widely. So the typography gives: during rendering the headline shrinks until
+  the text fits its box both vertically and horizontally. Without this, a single
+  character of overflow dropped a whole word in truncation, and one long
+  compound word could be clipped at the edge.
+- **The AI Act label is switched off.** That is an AMR decision: images are
+  cropped rather than altered, and every line of copy is reviewed by a person
+  before download. The label is implemented as a flag rather than deleted from
+  the code: setting `requireAiActLabel` back to `true` in
+  [display.json](lib/specs/display.json) restores it in the assets, in the
+  validation and in the zip's README file.
 
-- **Takaisin** vaihtaa vain näkymää. Osoite ja analyysi säilyvät, ja
-  ykkösvaiheeseen ilmestyy **Jatka brändikorttiin**, jolla pääsee eteenpäin
-  ilman uutta ~14 sekunnin analyysia. Vain **Aloita alusta** tyhjentää kaiken.
-- **Pääkuva** valitaan brändikortissa suoraan: aineistoissa käytetään
-  ensimmäistä valittuna olevaa kuvaa, ja *Aseta pääkuvaksi* nostaa halutun
-  kärkeen. Aiemmin ainoa keino oli poistaa kaikki sitä edeltävät kuvat.
-- **Odotusviestit** kertovat mitä putki tekee ("Haetaan verkkosivua…",
-  "Sovitetaan kuvat kokoihin…"). Viestit seuraavat todellista
-  suoritusjärjestystä; prosentteja ei näytetä, koska palvelin ei raportoi
-  edistymää.
-- **Zip-paketin sisältö** on valittavissa. Oletuksena mukaan tulee vain
-  valittu variaatio, jotta vastaanottajan ei tarvitse arvata mikä kolmesta
-  versiosta oli oikea. Kaikki variaatiot saa mukaan A/B-testausta varten.
-- **Polun päässä** on toimituskortti. Toimitusta ei ole kytketty, ja se
-  sanotaan käyttäjälle suoraan — placeholder ei teeskentele toimivaa.
+  Worth noting for any review: ad headlines, body copy and CTAs are written
+  entirely by the model — a disclosure duty would most likely attach to the
+  text, not to cropped images. If the label is switched on for ads running in
+  Finnish media, `aiActLabel` needs translating too: a disclosure has to read in
+  the language of the ad.
+- **HTML5**: the files are self-contained (images and styles embedded), load
+  nothing from outside, and use no jQuery. Validation checks all three.
+- **Image selection**: image candidates are sent to the model as images, not as
+  bare URLs, so it can see what it is choosing. Finished ads are rejected: they
+  carry their own headline, their own CTA and often a different web address, and
+  cropping cuts their text mid-word. A free filter runs before the model and
+  drops `/ad/` paths and filenames containing banner, mainos or promo. If no
+  image is usable, the ad is built from type — better than the wrong image.
+- **Contrast**: every asset is measured for text contrast against its ground
+  (4.5:1 required) and for whether the CTA separates from the ground and carries
+  readable text itself. The colours are resolved by the same function that
+  renders them, so the check measures exactly what ends up in the asset.
+- **Character set**: the model occasionally mixes Cyrillic homoglyphs in among
+  the Latin ones (`piцца`). They look right at a glance but are broken text.
+  Generation filters such variants out and asks again; on top of that every
+  asset gets its own character-set check, which makes any slip visible.
+- **Logo visibility**: sites often carry a reversed-out logo
+  (`alma-logo-white.png`) that loads perfectly and then disappears on a light
+  ground. The logo's pixels are measured and contrast is calculated against the
+  background colour; if the logo does not separate, the company name is used as
+  text instead and the user is warned. A successful fetch is not a sufficient
+  check.
 
-## Tiedetyt rajoitukset
+## The user's path
 
-- **Video on rakentamatta.** Speksit ovat kirjastossa (`video`-lohko) ja
-  `ENABLE_VIDEO`-lippu varattu, mutta `/api/video`-reittiä ei ole.
-- **Kuvavalinta ilman API-avainta** ottaa ensimmäiset sivulta löytyvät kuvat.
-  Nimeen ja polkuun perustuva suodatin karsii ilmeisimmät mainokset, mutta
-  kuvien katselu vaatii mallin. Käyttäjä pudottaa huonon kuvan brändikortissa.
-- **Kirjoitusvirheitä ei tunnisteta koneellisesti.** Merkistötarkistus nappaa
-  kyrilliset lipsahdukset, mutta tavallinen kirjoitusvirhe menee läpi —
-  testeissä malli kirjoitti kerran `lempipiazzasi` (pitäisi olla
-  `lempipizzasi`). Siksi tekstit ovat muokattavissa tulosnäkymässä; lue ne
-  läpi ennen latausta.
-- **Fontit** mapataan järjestelmäfontteihin, koska Alma laskee ulkoiset
-  fonttilataukset tiedostokokorajaan. Brändifontin nimi näkyy brändikortissa,
-  mutta renderöinti käyttää lähintä järjestelmävastinetta.
-- **npm audit** raportoi 3 haavoittuvuutta, jotka tulevat Next 15:n
-  transitiivisista riippuvuuksista (postcss, sharp). Korjaus vaatii Next 16
-  -päivityksen. Ei vaikuta demon ajopolkuun.
+Three steps: input → brand card → assets. You can move in both directions
+without losing anything:
 
-## Testattu
+- **Back** only changes the view. The address and the analysis survive, and
+  **Continue to the brand card** appears on step one so you can move forward
+  without another ~14 second analysis. Only **Start over** clears everything.
+- **The main image** is chosen directly on the brand card: the assets use the
+  first enabled image, and *Make main image* lifts the one you want to the top.
+  Previously the only way was to remove every image ahead of it.
+- **Waiting messages** say what the pipeline is doing ("Fetching your website…",
+  "Fitting images to each size…"). They follow the real order of execution; no
+  percentage is shown, because the server does not report progress.
+- **What goes in the zip** is a choice. By default only the selected variant is
+  included, so the recipient does not have to guess which of the three was the
+  right one. All variants can go in for A/B testing.
+- **At the end of the path** is a delivery card. Delivery is not connected, and
+  the user is told so plainly — a placeholder does not pretend to work.
 
-Putki on ajettu läpi kolmella oikealla sivustolla ilman API-avainta:
+## Onboarding microsite (`/onboarding`)
 
-| Sivusto | Poiminta | Aineistot | Validointi |
+A self-serve onboarding path sits in front of the studio, built to the PRD *AMS
+Advertising Onboarding Tool* v0.1. It takes a small business owner from intent
+to a plan in under five minutes:
+
+```
+Welcome → URL → Brand → Goal → Timeline → Audience → Budget → Plan
+```
+
+- **The brand is confirmed first.** The page is read, and the user is shown who
+  their business is — name, industry, what they sell, where they operate, plus
+  the logo and colour palette we found. Only once that is acknowledged is
+  anything asked about the campaign. Everything later leans on it, so it is
+  looked at first.
+- **The creative is made last.** Onboarding does no creative work at all. It
+  produces a plan, and the ads are made afterwards, in the studio.
+- **The analysis is a visible wait.** The PRD ran the analysis in the background
+  and confirmed it at the end (§7 6a) precisely to avoid that wait. Confirming
+  first means the user waits once, on the brand step. The fetch starts the
+  moment the address is submitted; after 30 seconds it is treated as failed and
+  the path carries on without it.
+- **The recommendation is rule-based**, not ML: the same answers always give the
+  same result, and every rule can be explained in one sentence. The AI signals
+  only *add* weight — they never remove a channel the user's own answer put on
+  the table.
+- **The numbers are placeholders.** Prices, budget tiers, channel reach and
+  regional shares live in `lib/onboarding/data/` — one file per owner — and
+  every figure on screen follows them. See `docs/task-fanout.md`.
+- **A creative brief comes out of the far end** (PRD Appendix B) and travels to
+  the studio under the `sessionStorage` key `ams.creativeBrief.v1`. The studio
+  jumps straight to the brand card: the address is not asked twice, and the
+  brand is not analysed again.
+
+## Known limitations
+
+- **Video is unbuilt.** The specs are in the library (the `video` block) and an
+  `ENABLE_VIDEO` flag is reserved, but there is no `/api/video` route.
+- **Image selection without an API key** takes the first images found on the
+  page. The name- and path-based filter weeds out the obvious ads, but actually
+  looking at images needs the model. The user drops a bad image on the brand
+  card.
+- **Spelling mistakes are not caught automatically.** The character-set check
+  catches Cyrillic slips, but an ordinary typo goes through — in testing the
+  model once wrote `lempipiazzasi` where it meant `lempipizzasi`. That is why
+  the copy is editable on the results screen; read it before downloading.
+- **Fonts** are mapped to system fonts, because Alma counts external font loads
+  toward the file size limit. The brand font's name shows on the brand card, but
+  rendering uses the closest system equivalent.
+- **Browser launch loops forever** if Playwright's chromium binary is missing or
+  does not match the installed version. `getBrowser()` (`lib/render.ts`) calls
+  itself again after every failed launch with no attempt cap, so `/api/generate`
+  never responds and the server logs no error. The fix is an attempt counter;
+  until then, make sure you have run `npx playwright install chromium`.
+
+## Tested
+
+The pipeline has been run end to end against three real websites without an API
+key:
+
+| Site | Extraction | Assets | Validation |
 |---|---|---|---|
-| almamedia.fi | 0,7 s | 12 kpl | 12/12 |
-| kotipizza.fi | 3,7 s (Playwright) | 12 kpl | 12/12 |
-| fazer.fi | 2,1 s (Playwright) | 12 kpl | 12/12 |
+| almamedia.fi | 0.7 s | 12 | 12/12 |
+| kotipizza.fi | 3.7 s (Playwright) | 12 | 12/12 |
+| fazer.fi | 2.1 s (Playwright) | 12 | 12/12 |
 
-Aineistoja syntyy 12: kolme kokoa × kolme copy-variaatiota, sekä
-HTML5-animaatio kustakin variaatiosta.
+Twelve assets come out: three sizes × three copy variants, plus an HTML5
+animation for each variant.
 
-Claude-avaimen kanssa poiminta kestää noin 9 sekuntia ja generointi noin
-16 sekuntia, eli koko putki alle puoli minuuttia. Ilman avainta se on alle
-10 sekuntia, mutta copy tulee valmiista pohjista.
+With a Claude key, extraction takes about 9 seconds and generation about 16, so
+the whole pipeline runs in under half a minute. Without a key it is under 10
+seconds, but the copy comes from set templates.

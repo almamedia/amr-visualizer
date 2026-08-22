@@ -9,7 +9,7 @@ export interface ScrapeResult {
   ogTitle: string;
   ogDescription: string;
   ogSiteName: string;
-  /** Sivun näkyvä teksti, katkaistu. */
+  /** The page's visible text, truncated. */
   text: string;
   logoCandidates: string[];
   imageCandidates: { url: string; alt: string }[];
@@ -26,7 +26,7 @@ export function normalizeUrl(input: string): string {
   const withProto = /^https?:\/\//i.test(trimmed)
     ? trimmed
     : `https://${trimmed}`;
-  // Heittää jos ei kelvollinen — kutsuja käsittelee.
+  // Throws when invalid — the caller handles it.
   const u = new URL(withProto);
   if (u.protocol !== "https:" && u.protocol !== "http:") {
     throw new Error("Vain http- ja https-osoitteet ovat tuettuja.");
@@ -59,16 +59,16 @@ export async function scrape(rawUrl: string): Promise<ScrapeResult> {
     html = await res.text();
   } catch (e) {
     warnings.push(
-      `Suora haku epäonnistui (${
+      `The direct fetch failed (${
         e instanceof Error ? e.message : "tuntematon virhe"
-      }), kokeillaan selainrenderöintiä.`
+      }), trying browser rendering instead.`
     );
   }
 
   let $ = cheerio.load(html || "<html></html>");
   let visibleText = extractText($);
 
-  // JS-raskaat sivut: liian vähän tekstiä → renderöi selaimella.
+  // JS-heavy pages: too little text → render it in a browser.
   if (!html || visibleText.length < 220) {
     const rendered = await renderWithPlaywright(url);
     if (rendered) {
@@ -79,10 +79,10 @@ export async function scrape(rawUrl: string): Promise<ScrapeResult> {
       visibleText = extractText($);
     } else if (!html) {
       throw new Error(
-        "Sivun sisältöä ei saatu haettua. Tarkista osoite ja yritä uudelleen."
+        "The page content could not be fetched. Check the address and try again."
       );
     } else {
-      warnings.push("Sivulta löytyi vain vähän tekstiä.");
+      warnings.push("Only a little text was found on the page.");
     }
   }
 
@@ -140,9 +140,9 @@ async function renderWithPlaywright(
 }
 
 /**
- * Pudota logoehdokkaat, jotka eivät oikeasti lataudu. Sivustoilla on usein
- * vanhentuneita favicon-viittauksia, ja rikkinäinen logo näkyisi käyttäjälle
- * tyhjänä ruutuna brändikortissa. Järjestys säilyy.
+ * Drop logo candidates that do not actually load. Sites often carry stale
+ * favicon references, and a broken logo would show the user an empty box on
+ * the brand card. Order is preserved.
  */
 async function verifyReachable(urls: string[]): Promise<string[]> {
   const checked = await Promise.all(
@@ -183,12 +183,12 @@ function findLogos($: cheerio.CheerioAPI, base: string): string[] {
     }
   });
 
-  // 2. Header-alueen ensimmäinen kuva.
+  // 2. The first image in the header area.
   $("header img, .header img, #header img, .navbar img").each((i, el) => {
     if (i < 2) push(abs(base, $(el).attr("src")));
   });
 
-  // 3. apple-touch-icon (yleensä isoin ja siistein ikoni).
+  // 3. apple-touch-icon (usually the largest and cleanest icon).
   $('link[rel="apple-touch-icon"], link[rel="apple-touch-icon-precomposed"]').each(
     (_, el) => push(abs(base, $(el).attr("href")))
   );
@@ -204,12 +204,12 @@ function findLogos($: cheerio.CheerioAPI, base: string): string[] {
   });
   icons.sort((a, b) => b.size - a.size).forEach((i) => push(i.url));
 
-  // 5. og:image viimeisenä oljenkortena.
+  // 5. og:image as a last resort.
   push(abs(base, $('meta[property="og:image"]').attr("content")));
 
-  // Monella sivustolla on sekä tavallinen että negaversio logosta. Mainokset
-  // rakentuvat vaalealle pohjalle, joten valkoinen logo katoaisi taustaan —
-  // pudota negaversiot listan hännille.
+  // Many sites carry both a normal and a reversed-out logo. Ads
+  // are built on a light ground, so a white logo would vanish into it — push
+  // the reversed-out versions to the tail of the list.
   const NEGATIVE = /white|valko|nega|negative|invert|inverted|light|reverse/i;
   return out
     .sort((a, b) => Number(NEGATIVE.test(a)) - Number(NEGATIVE.test(b)))
@@ -232,11 +232,11 @@ function findImages(
   const consider = (src: string | undefined, alt: string) => {
     const u = abs(base, src);
     if (!u || seen.has(u)) return;
-    // Valmis mainos ei kelpaa uuden mainoksen kuvaksi: siinä on oma otsikko,
-    // oma CTA ja usein eri verkko-osoite. Tiedostonimi tai /ad/-polku
-    // paljastaa nämä ilmaiseksi, ennen kuin mallia tarvitsee kysyä.
+    // A finished ad is no good as the image inside a new ad: it has its own
+    // headline, its own CTA and often a different web address. A filename or
+    // an /ad/ path gives these away for free, before the model is asked.
     if (IMG_SKIP.test(u) || AD_PATH.test(u)) return;
-    if (/\.svg($|\?)/i.test(u)) return; // SVG on yleensä ikoni, ei valokuva
+    if (/\.svg($|\?)/i.test(u)) return; // an SVG is usually an icon, not a photo
     seen.add(u);
     out.push({ url: u, alt: alt.trim().slice(0, 140) });
   };
@@ -245,12 +245,12 @@ function findImages(
     const $el = $(el);
     const w = parseInt($el.attr("width") ?? "0", 10);
     const h = parseInt($el.attr("height") ?? "0", 10);
-    // Pudota selvästi pienet (ikonit), mutta salli jos mittoja ei ilmoiteta.
+    // Drop the clearly small ones (icons), but allow images with no stated size.
     if ((w && w < 200) || (h && h < 150)) return;
 
     const srcset = $el.attr("srcset");
     if (srcset) {
-      // Ota srcsetin viimeinen (yleensä suurin) vaihtoehto.
+      // Take the last (usually largest) option in the srcset.
       const largest = srcset.split(",").pop()?.trim().split(/\s+/)[0];
       consider(largest, $el.attr("alt") ?? "");
     }
@@ -260,7 +260,7 @@ function findImages(
     );
   });
 
-  // og:image vasta sisältökuvien jälkeen: se on usein jakokortti tai kollaasi,
+  // og:image only after the content images: it is often a share card or collage,
   // joka rajautuu bannerissa huonosti. Otetaan mukaan varalta, ei ensisijaisena.
   const og = $('meta[property="og:image"]').attr("content");
   if (og && !IMG_SKIP.test(og)) consider(og, "");
@@ -282,7 +282,7 @@ async function findColors(
     css += "\n" + $(el).text();
   });
 
-  // Hae muutama ensimmäinen tyylitiedosto — sieltä löytyvät CSS-muuttujat.
+  // Fetch the first few stylesheets — that is where the CSS variables live.
   const sheets: string[] = [];
   $('link[rel="stylesheet"]').each((_, el) => {
     const u = abs(base, $(el).attr("href"));
@@ -308,7 +308,7 @@ async function findColors(
     css += "\n" + ($(el).attr("style") ?? "");
   });
 
-  // CSS-muuttujat painotetaan: ne ovat lähes aina brändivärejä.
+  // CSS variables are weighted up: they are almost always brand colours.
   const varDecls = css.match(/--[\w-]*(?:color|brand|primary|accent|bg|theme)[\w-]*\s*:\s*[^;]+/gi) ?? [];
   const weighted = css + "\n" + varDecls.join(";\n").repeat(6);
 
@@ -329,7 +329,7 @@ async function findColors(
     );
   }
 
-  // Suosi värejä, jotka esiintyvät myös HTML:ssä (teemavärit, brand-tagit).
+  // Prefer colours that also appear in the HTML (theme colours, brand tags).
   const themeColor = $('meta[name="theme-color"]').attr("content");
   if (themeColor) bump(themeColor, 25);
   for (const m of html.matchAll(HEX_RE)) bump(m[0], 0.2);
@@ -369,7 +369,7 @@ function findFonts(html: string): string[] {
     }
   }
 
-  // Google Fonts -linkit kertovat brändifontin suoraan.
+  // Google Fonts links name the brand font outright.
   for (const m of html.matchAll(
     /fonts\.googleapis\.com\/css2?\?([^"'>]+)/gi
   )) {
